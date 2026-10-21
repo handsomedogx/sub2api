@@ -48,6 +48,7 @@ coverage/
 .env
 .env.*
 !.env.example
+deploy/dog/.env
 
 # 本地闭源插件目录可能包含发布签名私钥，绝不能进入 Docker 构建上下文。
 /plugins/

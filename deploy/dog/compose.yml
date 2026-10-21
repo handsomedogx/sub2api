@@ -1,0 +1,95 @@
+name: sub2api-dog
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  sub2api:
+    image: sub2api-dog:${SUB2API_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${SUB2API_VERSION:-local-dog}
+        COMMIT: ${SUB2API_COMMIT:-local}
+        NPM_CONFIG_REGISTRY: https://registry.npmmirror.com
+        NODE_OPTIONS: --max-old-space-size=4096
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:${SERVER_PORT:-8080}:8080"
+    env_file: .env
+    environment:
+      AUTO_SETUP: "true"
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: "8080"
+      SERVER_MODE: release
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_USER: sub2api
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Generate .env with manage.ps1 first}
+      DATABASE_DBNAME: sub2api
+      DATABASE_SSLMODE: disable
+      DATABASE_MAX_OPEN_CONNS: "50"
+      DATABASE_MAX_IDLE_CONNS: "10"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      LOG_OUTPUT_TO_FILE: "false"
+      SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP: "false"
+      SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: "false"
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging: *logging
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sub2api
+      POSTGRES_DB: sub2api
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generate .env with manage.ps1 first}
+      PGDATA: /var/lib/postgresql/data
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sub2api -d sub2api"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    logging: *logging
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Generate .env with manage.ps1 first}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    logging: *logging
+
+volumes:
+  app_data:
+  postgres_data:
+  redis_data:
