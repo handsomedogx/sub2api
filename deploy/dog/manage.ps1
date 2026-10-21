@@ -70,7 +70,7 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the built image.' }
             $localImage = @($images | Where-Object { $_ -like 'sub2api-dog:*' })
             if ($localImage.Count -ne 1) { throw 'Expected one local sub2api-dog image.' }
-            $targetImage = "ghcr.io/handsomedogx/sub2api:$ImageTag"
+            $targetImage = "ghcr.io/handsomedogx/sub2api-dog:$ImageTag"
             Invoke-Checked docker (@('tag', $localImage[0], $targetImage))
             Write-Host 'Pushing via the local network. Log in with docker login ghcr.io -u handsomedogx if required.'
             Invoke-Checked docker (@('push', $targetImage))

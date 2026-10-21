@@ -71,7 +71,7 @@ Docker 镜像下载使用 Docker Desktop 自身的代理设置，与 Git 的代�
 
 工作流为 `.github/workflows/dog-image.yml`，名字是 **Dog container image**。
 仅 `dog-*` 标签推送或手动执行时构建，不会因为每次普通代码 push 就构建镜像。
-`dog-*` 与上游 `v*` 发布标签分开，镜像路径为 `ghcr.io/handsomedogx/sub2api`。
+`dog-*` 与上游 `v*` 发布标签分开，镜像路径为 `ghcr.io/handsomedogx/sub2api-dog`。
 
 先提交自己的代码，保持工作区干净，然后在仓库根目录运行：
 
@@ -91,6 +91,8 @@ fork 首次使用可能需要在 Actions 页面点击启用工作流；手动运
 目前优先使用标签触发。已有 CI/Security Scan 可能也响应 push，其结果需与个人镜像工作流分开查看。
 
 云端使用 GitHub 自动提供的 `GITHUB_TOKEN` 推送 GHCR，不需要上传你的生产 `.env` 或创建发布 PAT。
+构建和二进制检查通过后，也会保存可下载的 `sub2api-dog.tar` 镜像包及 SHA256 校验文件，保留 7 天。
+在运行页面的 Artifacts 下载并解压后，可以执行 `docker load -i sub2api-dog.tar` 导入，绕过镜像仓库拉取。
 构建使用 Linux amd64（匹配常见 x86 VPS），推送版本标签和 `sha-12位提交号` 标签；运行结果 Summary
 还会给出精确的镜像 digest。部署时选固定标签或 digest，不自动覆盖线上服务。
 ARM 服务器需要另外扩展构建平台。
@@ -114,7 +116,7 @@ Password 使用有 `write:packages` 权限的 GitHub classic PAT，而非 GitHub
 powershell -ExecutionPolicy Bypass -File .\deploy\dog\manage.ps1 Push
 ```
 
-脚本会先构建本地源码，再推送为 `ghcr.io/handsomedogx/sub2api:local-日期-时间`。
+脚本会先构建本地源码，再推送为 `ghcr.io/handsomedogx/sub2api-dog:local-日期-时间`。
 本地版本必须使用 `local-*` 标签，避免与云端版本标签混淆。此操作会使用本机网络和上行带宽，
 不会重启当前实例；通常正式发布用云端流程即可，不必重复上传。
 

@@ -28,7 +28,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}-dog"
           version="$(tr -d '\r\n' < backend/cmd/server/VERSION)-dog"
           {
             echo "name=$image"
@@ -44,21 +44,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Authenticate to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Linux amd64 image
+      - name: Build Linux amd64 image
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
-          push: true
+          load: true
           tags: ${{ steps.image.outputs.tags }}
           build-args: |
             VERSION=${{ steps.image.outputs.version }}
@@ -74,23 +67,59 @@ jobs:
           cache-from: type=gha,scope=dog-image-amd64
           cache-to: type=gha,mode=max,scope=dog-image-amd64
 
-      - name: Check published binary
+      - name: Check built binary
         env:
           IMAGE_NAME: ${{ steps.image.outputs.name }}
-          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
-        run: docker run --rm "$IMAGE_NAME@$IMAGE_DIGEST" -version
+        run: docker run --rm "$IMAGE_NAME:sha-${GITHUB_SHA:0:12}" -version
+
+      - name: Export portable image archive
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+        working-directory: ${{ runner.temp }}
+        run: |
+          docker image save "$IMAGE_NAME:sha-${GITHUB_SHA:0:12}" -o sub2api-dog.tar
+          sha256sum sub2api-dog.tar > sub2api-dog.tar.sha256
+
+      - name: Upload portable image archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: sub2api-dog-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/sub2api-dog.tar
+            ${{ runner.temp }}/sub2api-dog.tar.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Authenticate to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push versioned images
+        id: publish
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          IMAGE_TAGS: ${{ steps.image.outputs.tags }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            if [[ -n "$tag" ]]; then docker push "$tag"; fi
+          done <<< "$IMAGE_TAGS"
+          image_ref="$(docker image inspect "$IMAGE_NAME:sha-${GITHUB_SHA:0:12}" --format '{{index .RepoDigests 0}}')"
+          echo "image_ref=$image_ref" >> "$GITHUB_OUTPUT"
 
       - name: Record deployable image
         env:
-          IMAGE_NAME: ${{ steps.image.outputs.name }}
-          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_REF: ${{ steps.publish.outputs.image_ref }}
           IMAGE_TAGS: ${{ steps.image.outputs.tags }}
         run: |
           {
             echo '## Built image'
             echo '```text'
             echo "$IMAGE_TAGS"
-            echo "$IMAGE_NAME@$IMAGE_DIGEST"
+            echo "$IMAGE_REF"
             echo '```'
             echo 'Deploy the digest or a selected version tag. This workflow does not change a running server.'
           } >> "$GITHUB_STEP_SUMMARY"

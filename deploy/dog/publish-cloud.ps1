@@ -27,5 +27,5 @@ try {
         throw "Push failed. The local tag $Tag remains; retry the git push command after fixing authentication/network access."
     }
     Write-Host 'Cloud build requested. Check https://github.com/handsomedogx/sub2api/actions'
-    Write-Host "After success: ghcr.io/handsomedogx/sub2api:$Tag"
+    Write-Host "After success: ghcr.io/handsomedogx/sub2api-dog:$Tag"
 } finally { Pop-Location }
