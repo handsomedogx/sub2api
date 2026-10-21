@@ -975,6 +975,20 @@ export default {
         priorityHint: '数值越小优先级越高，用于账号调度',
         statusLabel: '状态'
       },
+      systemPrompt: {
+        title: 'System 提示词策略',
+        hint: '该策略作用于整个分组，账号切换和故障转移不会改变提示词行为。',
+        placeholder: '输入由网关注入的 System 提示词',
+        passthroughHint: '当前原样透传客户端提示词；已填写的网关提示词会保留，但不会生效。',
+        activeHint: '最多 64 KiB。内部 OAuth/协议兼容提示词仍会在后续转换阶段按需添加。',
+        promptRequired: '注入或替换模式必须填写网关 System 提示词',
+        promptTooLong: 'System 提示词不能超过 64 KiB',
+        modes: {
+          passthrough: '原样透传客户端 System',
+          inject: '在客户端 System 前注入网关提示词',
+          replace: '仅使用网关 System 提示词'
+        }
+      },
       exclusiveObj: {
         yes: '是',
         no: '否'

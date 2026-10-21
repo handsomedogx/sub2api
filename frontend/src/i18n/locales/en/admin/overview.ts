@@ -993,6 +993,20 @@ export default {
         priorityHint: 'Lower value means higher priority, used for account scheduling',
         statusLabel: 'Status'
       },
+      systemPrompt: {
+        title: 'System Prompt Policy',
+        hint: 'This policy applies to the whole group, so account failover never changes prompt behavior.',
+        placeholder: 'Enter the gateway-managed system prompt',
+        passthroughHint: 'Client prompts are passed through unchanged. A saved gateway prompt is kept but inactive.',
+        activeHint: 'Maximum 64 KiB. Internal OAuth/protocol compatibility prompts may still be added later in the forwarding pipeline.',
+        promptRequired: 'A gateway system prompt is required in inject or replace mode.',
+        promptTooLong: 'The system prompt cannot exceed 64 KiB.',
+        modes: {
+          passthrough: 'Pass through client System unchanged',
+          inject: 'Prepend gateway prompt to client System',
+          replace: 'Use gateway System prompt only'
+        }
+      },
       exclusiveObj: {
         yes: 'Yes',
         no: 'No'

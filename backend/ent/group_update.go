@@ -97,6 +97,34 @@ func (_u *GroupUpdate) ClearDescription() *GroupUpdate {
 	return _u
 }
 
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (_u *GroupUpdate) SetSystemPromptMode(v string) *GroupUpdate {
+	_u.mutation.SetSystemPromptMode(v)
+	return _u
+}
+
+// SetNillableSystemPromptMode sets the "system_prompt_mode" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSystemPromptMode(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetSystemPromptMode(*v)
+	}
+	return _u
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (_u *GroupUpdate) SetSystemPrompt(v string) *GroupUpdate {
+	_u.mutation.SetSystemPrompt(v)
+	return _u
+}
+
+// SetNillableSystemPrompt sets the "system_prompt" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSystemPrompt(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetSystemPrompt(*v)
+	}
+	return _u
+}
+
 // SetI18n sets the "i18n" field.
 func (_u *GroupUpdate) SetI18n(v domain.GroupI18n) *GroupUpdate {
 	_u.mutation.SetI18n(v)
@@ -1536,6 +1564,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SystemPromptMode(); ok {
+		if err := group.SystemPromptModeValidator(v); err != nil {
+			return &ValidationError{Name: "system_prompt_mode", err: fmt.Errorf(`ent: validator failed for field "Group.system_prompt_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.PeakStart(); ok {
 		if err := group.PeakStartValidator(v); err != nil {
 			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
@@ -1628,6 +1661,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(group.FieldDescription, field.TypeString)
+	}
+	if value, ok := _u.mutation.SystemPromptMode(); ok {
+		_spec.SetField(group.FieldSystemPromptMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SystemPrompt(); ok {
+		_spec.SetField(group.FieldSystemPrompt, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.I18n(); ok {
 		_spec.SetField(group.FieldI18n, field.TypeJSON, value)
@@ -2348,6 +2387,34 @@ func (_u *GroupUpdateOne) SetNillableDescription(v *string) *GroupUpdateOne {
 // ClearDescription clears the value of the "description" field.
 func (_u *GroupUpdateOne) ClearDescription() *GroupUpdateOne {
 	_u.mutation.ClearDescription()
+	return _u
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (_u *GroupUpdateOne) SetSystemPromptMode(v string) *GroupUpdateOne {
+	_u.mutation.SetSystemPromptMode(v)
+	return _u
+}
+
+// SetNillableSystemPromptMode sets the "system_prompt_mode" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSystemPromptMode(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSystemPromptMode(*v)
+	}
+	return _u
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (_u *GroupUpdateOne) SetSystemPrompt(v string) *GroupUpdateOne {
+	_u.mutation.SetSystemPrompt(v)
+	return _u
+}
+
+// SetNillableSystemPrompt sets the "system_prompt" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSystemPrompt(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSystemPrompt(*v)
+	}
 	return _u
 }
 
@@ -3803,6 +3870,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SystemPromptMode(); ok {
+		if err := group.SystemPromptModeValidator(v); err != nil {
+			return &ValidationError{Name: "system_prompt_mode", err: fmt.Errorf(`ent: validator failed for field "Group.system_prompt_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.PeakStart(); ok {
 		if err := group.PeakStartValidator(v); err != nil {
 			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
@@ -3912,6 +3984,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(group.FieldDescription, field.TypeString)
+	}
+	if value, ok := _u.mutation.SystemPromptMode(); ok {
+		_spec.SetField(group.FieldSystemPromptMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SystemPrompt(); ok {
+		_spec.SetField(group.FieldSystemPrompt, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.I18n(); ok {
 		_spec.SetField(group.FieldI18n, field.TypeJSON, value)

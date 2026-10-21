@@ -44,6 +44,14 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.String("system_prompt_mode").
+			MaxLen(20).
+			Default("passthrough").
+			Comment("分组级 System 提示词策略：passthrough/inject/replace"),
+		field.String("system_prompt").
+			Default("").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Comment("分组级网关 System 提示词，仅 inject/replace 模式生效"),
 		// 名称与描述的界面语言译文 (added by migration 242)
 		field.JSON("i18n", domain.GroupI18n{}).
 			Default(domain.GroupI18n{}).

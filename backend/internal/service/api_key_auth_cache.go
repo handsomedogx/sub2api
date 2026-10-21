@@ -62,6 +62,8 @@ type APIKeyAuthUserSnapshot struct {
 
 // APIKeyAuthGroupSnapshot 分组快照
 type APIKeyAuthGroupSnapshot struct {
+	SystemPromptMode                string                        `json:"system_prompt_mode,omitempty"`
+	SystemPrompt                    string                        `json:"system_prompt,omitempty"`
 	ID                              int64                         `json:"id"`
 	Name                            string                        `json:"name"`
 	Platform                        string                        `json:"platform"`

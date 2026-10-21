@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 30 // v30: include configured API key groups
+const apiKeyAuthSnapshotVersion = 31 // v31: include group system prompt policy
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -436,6 +436,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: apiKey.Group.FallbackGroupIDOnInvalidRequest,
+			SystemPromptMode:                apiKey.Group.SystemPromptMode,
+			SystemPrompt:                    apiKey.Group.SystemPrompt,
 			StreamOnly:                      apiKey.Group.StreamOnly,
 			CodexCLIOnly:                    apiKey.Group.CodexCLIOnly,
 			BlockSubagents:                  apiKey.Group.BlockSubagents,
@@ -544,6 +546,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ClaudeCodeOnly:                  snapshot.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 snapshot.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: snapshot.Group.FallbackGroupIDOnInvalidRequest,
+			SystemPromptMode:                snapshot.Group.SystemPromptMode,
+			SystemPrompt:                    snapshot.Group.SystemPrompt,
 			StreamOnly:                      snapshot.Group.StreamOnly,
 			CodexCLIOnly:                    snapshot.Group.CodexCLIOnly,
 			BlockSubagents:                  snapshot.Group.BlockSubagents,

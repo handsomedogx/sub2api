@@ -374,6 +374,7 @@ func normalizeCreateGroupInputForSimpleMode(input *CreateGroupInput) {
 	*input = CreateGroupInput{
 		Name: input.Name, Description: input.Description, I18n: input.I18n, Platform: input.Platform,
 		RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard,
+		SystemPromptMode: input.SystemPromptMode, SystemPrompt: input.SystemPrompt,
 	}
 }
 
@@ -381,7 +382,10 @@ func normalizeUpdateGroupInputForSimpleMode(input *UpdateGroupInput) {
 	if input == nil {
 		return
 	}
-	*input = UpdateGroupInput{Name: input.Name, Description: input.Description, I18n: input.I18n}
+	*input = UpdateGroupInput{
+		Name: input.Name, Description: input.Description, I18n: input.I18n,
+		SystemPromptMode: input.SystemPromptMode, SystemPrompt: input.SystemPrompt,
+	}
 }
 
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
@@ -400,6 +404,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	platform := NormalizeGroupPlatform(input.Platform)
+	systemPromptMode, systemPrompt, err := NormalizeGroupSystemPromptPolicy(input.SystemPromptMode, input.SystemPrompt)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_SYSTEM_PROMPT_POLICY", err.Error())
+	}
 	// 固定账号 manifest 配置：账号绑定发生在创建之后，创建时无法校验成员关系，
 	// 拒绝开启并在创建后的编辑里配置。
 	if normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig).Enabled {
@@ -574,6 +582,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RateMultiplier:                  input.RateMultiplier,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
+		SystemPromptMode:                systemPromptMode,
+		SystemPrompt:                    systemPrompt,
 		SubscriptionType:                subscriptionType,
 		DailyLimitUSD:                   dailyLimit,
 		WeeklyLimitUSD:                  weeklyLimit,
@@ -803,6 +813,20 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive
 	}
+	systemPromptMode := group.SystemPromptMode
+	systemPrompt := group.SystemPrompt
+	if input.SystemPromptMode != nil {
+		systemPromptMode = *input.SystemPromptMode
+	}
+	if input.SystemPrompt != nil {
+		systemPrompt = *input.SystemPrompt
+	}
+	normalizedSystemPromptMode, normalizedSystemPrompt, err := NormalizeGroupSystemPromptPolicy(systemPromptMode, systemPrompt)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_SYSTEM_PROMPT_POLICY", err.Error())
+	}
+	group.SystemPromptMode = normalizedSystemPromptMode
+	group.SystemPrompt = normalizedSystemPrompt
 	if input.Status != "" {
 		group.Status = input.Status
 	}

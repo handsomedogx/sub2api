@@ -745,6 +745,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	if !legacyCompact && !nativeV2 {
+		body, err = service.ApplyGroupSystemPromptPolicy(body, apiKey.Group, service.GroupSystemPromptProtocolResponses)
+		if err != nil {
+			reqLog.Warn("openai.responses_group_system_prompt_policy_failed", zap.Error(err))
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply group system prompt policy")
+			return
+		}
+	}
 
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")
@@ -1539,6 +1547,12 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	if !gjson.ValidBytes(body) {
 		logRequestBodyParseFailure(reqLog, body, nil)
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+	}
+	body, err = service.ApplyGroupSystemPromptPolicy(body, apiKey.Group, service.GroupSystemPromptProtocolAnthropic)
+	if err != nil {
+		reqLog.Warn("openai.messages_group_system_prompt_policy_failed", zap.Error(err))
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply group system prompt policy")
 		return
 	}
 
@@ -3420,6 +3434,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
 			ReasoningEffortMappings:     reasoningEffortMappings,
 			TurnStarted:                 recordTurnStart,
+			RewriteRequest: func(_ int, payload []byte) ([]byte, error) {
+				return service.ApplyGroupSystemPromptPolicy(payload, apiKey.Group, service.GroupSystemPromptProtocolResponses)
+			},
 			BeforePayloadParse: func(turn int, raw []byte, effectiveModel string) error {
 				if middleware2.CheckGroupSubagentFrame(c, raw) {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, middleware2.GroupSubagentsBlockedMessage, nil)

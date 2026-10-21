@@ -92,6 +92,34 @@ func (_c *GroupCreate) SetNillableDescription(v *string) *GroupCreate {
 	return _c
 }
 
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (_c *GroupCreate) SetSystemPromptMode(v string) *GroupCreate {
+	_c.mutation.SetSystemPromptMode(v)
+	return _c
+}
+
+// SetNillableSystemPromptMode sets the "system_prompt_mode" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSystemPromptMode(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetSystemPromptMode(*v)
+	}
+	return _c
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (_c *GroupCreate) SetSystemPrompt(v string) *GroupCreate {
+	_c.mutation.SetSystemPrompt(v)
+	return _c
+}
+
+// SetNillableSystemPrompt sets the "system_prompt" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSystemPrompt(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetSystemPrompt(*v)
+	}
+	return _c
+}
+
 // SetI18n sets the "i18n" field.
 func (_c *GroupCreate) SetI18n(v domain.GroupI18n) *GroupCreate {
 	_c.mutation.SetI18n(v)
@@ -1095,6 +1123,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.SystemPromptMode(); !ok {
+		v := group.DefaultSystemPromptMode
+		_c.mutation.SetSystemPromptMode(v)
+	}
+	if _, ok := _c.mutation.SystemPrompt(); !ok {
+		v := group.DefaultSystemPrompt
+		_c.mutation.SetSystemPrompt(v)
+	}
 	if _, ok := _c.mutation.I18n(); !ok {
 		v := group.DefaultI18n
 		_c.mutation.SetI18n(v)
@@ -1293,6 +1329,17 @@ func (_c *GroupCreate) check() error {
 		if err := group.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.SystemPromptMode(); !ok {
+		return &ValidationError{Name: "system_prompt_mode", err: errors.New(`ent: missing required field "Group.system_prompt_mode"`)}
+	}
+	if v, ok := _c.mutation.SystemPromptMode(); ok {
+		if err := group.SystemPromptModeValidator(v); err != nil {
+			return &ValidationError{Name: "system_prompt_mode", err: fmt.Errorf(`ent: validator failed for field "Group.system_prompt_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SystemPrompt(); !ok {
+		return &ValidationError{Name: "system_prompt", err: errors.New(`ent: missing required field "Group.system_prompt"`)}
 	}
 	if _, ok := _c.mutation.I18n(); !ok {
 		return &ValidationError{Name: "i18n", err: errors.New(`ent: missing required field "Group.i18n"`)}
@@ -1540,6 +1587,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Description(); ok {
 		_spec.SetField(group.FieldDescription, field.TypeString, value)
 		_node.Description = &value
+	}
+	if value, ok := _c.mutation.SystemPromptMode(); ok {
+		_spec.SetField(group.FieldSystemPromptMode, field.TypeString, value)
+		_node.SystemPromptMode = value
+	}
+	if value, ok := _c.mutation.SystemPrompt(); ok {
+		_spec.SetField(group.FieldSystemPrompt, field.TypeString, value)
+		_node.SystemPrompt = value
 	}
 	if value, ok := _c.mutation.I18n(); ok {
 		_spec.SetField(group.FieldI18n, field.TypeJSON, value)
@@ -2014,6 +2069,30 @@ func (u *GroupUpsert) UpdateDescription() *GroupUpsert {
 // ClearDescription clears the value of the "description" field.
 func (u *GroupUpsert) ClearDescription() *GroupUpsert {
 	u.SetNull(group.FieldDescription)
+	return u
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (u *GroupUpsert) SetSystemPromptMode(v string) *GroupUpsert {
+	u.Set(group.FieldSystemPromptMode, v)
+	return u
+}
+
+// UpdateSystemPromptMode sets the "system_prompt_mode" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSystemPromptMode() *GroupUpsert {
+	u.SetExcluded(group.FieldSystemPromptMode)
+	return u
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (u *GroupUpsert) SetSystemPrompt(v string) *GroupUpsert {
+	u.Set(group.FieldSystemPrompt, v)
+	return u
+}
+
+// UpdateSystemPrompt sets the "system_prompt" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSystemPrompt() *GroupUpsert {
+	u.SetExcluded(group.FieldSystemPrompt)
 	return u
 }
 
@@ -3176,6 +3255,34 @@ func (u *GroupUpsertOne) UpdateDescription() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearDescription() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearDescription()
+	})
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (u *GroupUpsertOne) SetSystemPromptMode(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSystemPromptMode(v)
+	})
+}
+
+// UpdateSystemPromptMode sets the "system_prompt_mode" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSystemPromptMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSystemPromptMode()
+	})
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (u *GroupUpsertOne) SetSystemPrompt(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSystemPrompt(v)
+	})
+}
+
+// UpdateSystemPrompt sets the "system_prompt" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSystemPrompt() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSystemPrompt()
 	})
 }
 
@@ -4678,6 +4785,34 @@ func (u *GroupUpsertBulk) UpdateDescription() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearDescription() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearDescription()
+	})
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (u *GroupUpsertBulk) SetSystemPromptMode(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSystemPromptMode(v)
+	})
+}
+
+// UpdateSystemPromptMode sets the "system_prompt_mode" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSystemPromptMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSystemPromptMode()
+	})
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (u *GroupUpsertBulk) SetSystemPrompt(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSystemPrompt(v)
+	})
+}
+
+// UpdateSystemPrompt sets the "system_prompt" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSystemPrompt() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSystemPrompt()
 	})
 }
 

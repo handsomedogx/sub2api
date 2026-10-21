@@ -100,6 +100,8 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		I18n:                            cloneGroupI18nForDuplicate(source.I18n),
 		Platform:                        source.Platform,
 		RateMultiplier:                  source.RateMultiplier,
+		SystemPromptMode:                source.SystemPromptMode,
+		SystemPrompt:                    source.SystemPrompt,
 		PeakRateEnabled:                 source.PeakRateEnabled,
 		PeakStart:                       source.PeakStart,
 		PeakEnd:                         source.PeakEnd,

@@ -53,6 +53,12 @@ func (h *OpenAIGatewayHandler) ResponsesInputTokens(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	body, err = service.ApplyGroupSystemPromptPolicy(body, apiKey.Group, service.GroupSystemPromptProtocolResponses)
+	if err != nil {
+		reqLog.Warn("openai_input_tokens.group_system_prompt_policy_failed", zap.Error(err))
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply group system prompt policy")
+		return
+	}
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || strings.TrimSpace(modelResult.String()) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
@@ -139,6 +145,11 @@ func (h *OpenAIGatewayHandler) ResponsesInputTokens(c *gin.Context) {
 // The route middleware already authenticates the API key and resolves the
 // group; this handler intentionally does not select an account or check billing.
 func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.anthropicErrorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
@@ -150,6 +161,12 @@ func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 	}
 	if len(body) == 0 {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return
+	}
+	body, err = service.ApplyGroupSystemPromptPolicy(body, apiKey.Group, service.GroupSystemPromptProtocolAnthropic)
+	if err != nil {
+		requestLogger(c, "handler.openai_gateway.grok_count_tokens").Warn("grok_count_tokens.group_system_prompt_policy_failed", zap.Error(err))
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply group system prompt policy")
 		return
 	}
 
@@ -221,6 +238,12 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	}
 	if len(body) == 0 {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return
+	}
+	body, err = service.ApplyGroupSystemPromptPolicy(body, apiKey.Group, service.GroupSystemPromptProtocolAnthropic)
+	if err != nil {
+		reqLog.Warn("openai_count_tokens.group_system_prompt_policy_failed", zap.Error(err))
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply group system prompt policy")
 		return
 	}
 

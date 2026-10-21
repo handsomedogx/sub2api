@@ -69,6 +69,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	body, err = service.ApplyGroupSystemPromptPolicy(body, apiKey.Group, service.GroupSystemPromptProtocolChatCompletions)
+	if err != nil {
+		reqLog.Warn("openai.chat_completions_group_system_prompt_policy_failed", zap.Error(err))
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply group system prompt policy")
+		return
+	}
 
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {

@@ -159,6 +159,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
 	}
+	body, err = service.ApplyGroupSystemPromptPolicy(body, apiKey.Group, service.GroupSystemPromptProtocolAnthropic)
+	if err != nil {
+		reqLog.Warn("gateway.group_system_prompt_policy_failed", zap.Error(err))
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply group system prompt policy")
+		return
+	}
 
 	setOpsRequestContext(c, "", false)
 
@@ -2090,6 +2096,12 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return
+	}
+	body, err = service.ApplyGroupSystemPromptPolicy(body, apiKey.Group, service.GroupSystemPromptProtocolAnthropic)
+	if err != nil {
+		reqLog.Warn("gateway.group_system_prompt_policy_failed", zap.Error(err))
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply group system prompt policy")
 		return
 	}
 

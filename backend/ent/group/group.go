@@ -26,6 +26,10 @@ const (
 	FieldName = "name"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
+	// FieldSystemPromptMode holds the string denoting the system_prompt_mode field in the database.
+	FieldSystemPromptMode = "system_prompt_mode"
+	// FieldSystemPrompt holds the string denoting the system_prompt field in the database.
+	FieldSystemPrompt = "system_prompt"
 	// FieldI18n holds the string denoting the i18n field in the database.
 	FieldI18n = "i18n"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
@@ -236,6 +240,8 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldName,
 	FieldDescription,
+	FieldSystemPromptMode,
+	FieldSystemPrompt,
 	FieldI18n,
 	FieldRateMultiplier,
 	FieldPeakRateEnabled,
@@ -338,6 +344,12 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// DefaultSystemPromptMode holds the default value on creation for the "system_prompt_mode" field.
+	DefaultSystemPromptMode string
+	// SystemPromptModeValidator is a validator for the "system_prompt_mode" field. It is called by the builders before save.
+	SystemPromptModeValidator func(string) error
+	// DefaultSystemPrompt holds the default value on creation for the "system_prompt" field.
+	DefaultSystemPrompt string
 	// DefaultI18n holds the default value on creation for the "i18n" field.
 	DefaultI18n domain.GroupI18n
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
@@ -487,6 +499,16 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByDescription orders the results by the description field.
 func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDescription, opts...).ToFunc()
+}
+
+// BySystemPromptMode orders the results by the system_prompt_mode field.
+func BySystemPromptMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSystemPromptMode, opts...).ToFunc()
+}
+
+// BySystemPrompt orders the results by the system_prompt field.
+func BySystemPrompt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSystemPrompt, opts...).ToFunc()
 }
 
 // ByRateMultiplier orders the results by the rate_multiplier field.

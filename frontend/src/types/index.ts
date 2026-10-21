@@ -564,6 +564,8 @@ export type VideoModelPrices = Record<string, Record<string, number>>
 
 export type SubscriptionType = 'standard' | 'subscription'
 
+export type GroupSystemPromptMode = 'passthrough' | 'inject' | 'replace'
+
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
   sonnet_mapped_model?: string
@@ -653,6 +655,8 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  system_prompt_mode: GroupSystemPromptMode
+  system_prompt: string
   // 管理端的 name / description 始终是原字段，各语言译文另放在 i18n 里
   i18n?: GroupI18n
   force_openai_fast: boolean
@@ -847,6 +851,8 @@ export interface CreateGroupRequest {
   platform?: GroupPlatform
   rate_multiplier?: number
   is_exclusive?: boolean
+  system_prompt_mode?: GroupSystemPromptMode
+  system_prompt?: string
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
@@ -916,6 +922,8 @@ export interface UpdateGroupRequest {
   platform?: GroupPlatform
   rate_multiplier?: number
   is_exclusive?: boolean
+  system_prompt_mode?: GroupSystemPromptMode
+  system_prompt?: string
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null

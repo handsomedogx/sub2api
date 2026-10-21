@@ -262,7 +262,9 @@ type OpenAIWSIngressHooks struct {
 	ReasoningEffortMappings []ReasoningEffortMapping
 	TurnStarted             func(turn int, startedAt time.Time)
 	BeforeTurn              func(turn int) error
-	BeforeRequest           func(turn int, payload []byte, originalModel string) error
+	// RewriteRequest applies inbound group instructions before account transforms.
+	RewriteRequest func(turn int, payload []byte) ([]byte, error)
+	BeforeRequest  func(turn int, payload []byte, originalModel string) error
 	// BeforePayloadParse runs synchronously before parsing a follow-up client
 	// frame on the native/bridge path. Handlers run one bounded fresh
 	// authorization here and install the current frame's immutable permissions,

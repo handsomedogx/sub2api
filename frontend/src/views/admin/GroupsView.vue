@@ -633,6 +633,31 @@
           </select>
           <p class="input-hint">{{ t("admin.groups.copyAccounts.hint") }}</p>
         </div>
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <label class="input-label">{{ t("admin.groups.systemPrompt.title") }}</label>
+          <Select
+            v-model="createForm.system_prompt_mode"
+            data-testid="create-system-prompt-mode"
+            :options="systemPromptModeOptions"
+          />
+          <p class="input-hint">{{ t("admin.groups.systemPrompt.hint") }}</p>
+          <textarea
+            v-model="createForm.system_prompt"
+            data-testid="create-system-prompt"
+            rows="6"
+            maxlength="65536"
+            class="input mt-3 min-h-32 font-mono text-sm"
+            :disabled="createForm.system_prompt_mode === 'passthrough'"
+            :placeholder="t('admin.groups.systemPrompt.placeholder')"
+          ></textarea>
+          <p class="input-hint">
+            {{
+              createForm.system_prompt_mode === "passthrough"
+                ? t("admin.groups.systemPrompt.passthroughHint")
+                : t("admin.groups.systemPrompt.activeHint")
+            }}
+          </p>
+        </div>
         <template v-if="!authStore.isSimpleMode">
         <div>
           <label class="input-label">{{
@@ -2218,6 +2243,31 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+        </div>
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <label class="input-label">{{ t("admin.groups.systemPrompt.title") }}</label>
+          <Select
+            v-model="editForm.system_prompt_mode"
+            data-testid="edit-system-prompt-mode"
+            :options="systemPromptModeOptions"
+          />
+          <p class="input-hint">{{ t("admin.groups.systemPrompt.hint") }}</p>
+          <textarea
+            v-model="editForm.system_prompt"
+            data-testid="edit-system-prompt"
+            rows="6"
+            maxlength="65536"
+            class="input mt-3 min-h-32 font-mono text-sm"
+            :disabled="editForm.system_prompt_mode === 'passthrough'"
+            :placeholder="t('admin.groups.systemPrompt.placeholder')"
+          ></textarea>
+          <p class="input-hint">
+            {{
+              editForm.system_prompt_mode === "passthrough"
+                ? t("admin.groups.systemPrompt.passthroughHint")
+                : t("admin.groups.systemPrompt.activeHint")
+            }}
+          </p>
         </div>
         <template v-if="!authStore.isSimpleMode">
         <!-- 从分组复制账号（编辑时） -->
@@ -4388,6 +4438,7 @@ import type {
   CompositeRouteMatchType,
   GroupI18n,
   GroupPlatform,
+  GroupSystemPromptMode,
   SubscriptionType,
 } from "@/types";
 import {
@@ -4779,6 +4830,15 @@ const subscriptionTypeOptions = computed(() => [
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
 ]);
 
+const systemPromptModeOptions = computed(() => [
+  {
+    value: "passthrough",
+    label: t("admin.groups.systemPrompt.modes.passthrough"),
+  },
+  { value: "inject", label: t("admin.groups.systemPrompt.modes.inject") },
+  { value: "replace", label: t("admin.groups.systemPrompt.modes.replace") },
+]);
+
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组
 const fallbackGroupOptions = computed(() => {
   const options: { value: number | null; label: string }[] = [
@@ -5058,6 +5118,8 @@ const createForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  system_prompt_mode: "passthrough" as GroupSystemPromptMode,
+  system_prompt: "",
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
@@ -5427,6 +5489,8 @@ const editForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  system_prompt_mode: "passthrough" as GroupSystemPromptMode,
+  system_prompt: "",
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5895,6 +5959,8 @@ const closeCreateModal = () => {
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
+  createForm.system_prompt_mode = "passthrough";
+  createForm.system_prompt = "";
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
@@ -6005,6 +6071,24 @@ const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean
   return true;
 };
 
+const validateSystemPromptForm = (form: {
+  system_prompt_mode: GroupSystemPromptMode;
+  system_prompt: string;
+}): boolean => {
+  if (
+    form.system_prompt_mode !== "passthrough" &&
+    !form.system_prompt.trim()
+  ) {
+    appStore.showError(t("admin.groups.systemPrompt.promptRequired"));
+    return false;
+  }
+  if (new TextEncoder().encode(form.system_prompt).length > 64 * 1024) {
+    appStore.showError(t("admin.groups.systemPrompt.promptTooLong"));
+    return false;
+  }
+  return true;
+};
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
@@ -6020,6 +6104,7 @@ const handleCreateGroup = async () => {
   if (!validateProfitControlForm(createForm)) {
     return;
   }
+  if (!validateSystemPromptForm(createForm)) return;
   if (!validateGroupReasoningMultipliers(createForm.model_pricing)) return;
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
   if (
@@ -6152,6 +6237,8 @@ const handleCreateGroup = async () => {
           description: createForm.description,
           i18n: createForm.i18n,
           platform: createForm.platform,
+          system_prompt_mode: createForm.system_prompt_mode,
+          system_prompt: createForm.system_prompt,
         }
       : requestData;
     await adminAPI.groups.create(payload);
@@ -6186,6 +6273,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
+  editForm.system_prompt_mode = group.system_prompt_mode ?? "passthrough";
+  editForm.system_prompt = group.system_prompt ?? "";
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
   editForm.daily_limit_usd = group.daily_limit_usd;
@@ -6310,6 +6399,8 @@ const closeEditModal = () => {
   clearAllAccountSearchState();
   showEditModal.value = false;
   editingGroup.value = null;
+  editForm.system_prompt_mode = "passthrough";
+  editForm.system_prompt = "";
   editForm.max_reasoning_effort = "";
   editForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   editForm.reasoning_effort_mappings = [];
@@ -6362,6 +6453,7 @@ const handleUpdateGroup = async () => {
   if (!validateProfitControlForm(editForm)) {
     return;
   }
+  if (!validateSystemPromptForm(editForm)) return;
   if (!validateGroupReasoningMultipliers(editForm.model_pricing)) return;
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
   if (
@@ -6512,6 +6604,8 @@ const handleUpdateGroup = async () => {
           name: editForm.name,
           description: editForm.description,
           i18n: editForm.i18n,
+          system_prompt_mode: editForm.system_prompt_mode,
+          system_prompt: editForm.system_prompt,
         }
       : payload;
     await adminAPI.groups.update(editingGroup.value.id, requestData);

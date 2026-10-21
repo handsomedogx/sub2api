@@ -68,6 +68,12 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	body, err = service.ApplyGroupSystemPromptPolicy(body, apiKey.Group, service.GroupSystemPromptProtocolResponses)
+	if err != nil {
+		reqLog.Warn("gateway.responses_group_system_prompt_policy_failed", zap.Error(err))
+		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply group system prompt policy")
+		return
+	}
 
 	// Extract model and stream using gjson (like OpenAI handler)
 	modelResult := gjson.GetBytes(body, "model")

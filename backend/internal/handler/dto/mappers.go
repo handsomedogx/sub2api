@@ -152,6 +152,8 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	}
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
+		SystemPromptMode:            g.SystemPromptMode,
+		SystemPrompt:                g.SystemPrompt,
 		ForceOpenAIFast:             g.ForceOpenAIFast,
 		FreeOpenAIFast:              g.FreeOpenAIFast,
 		StreamOnly:                  g.StreamOnly,
