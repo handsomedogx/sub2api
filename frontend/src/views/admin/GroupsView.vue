@@ -31,6 +31,7 @@
             <Select
               v-model="filters.status"
               :options="statusOptions"
+              data-testid="group-status-filter"
               :placeholder="t('admin.groups.allStatus')"
               class="w-40"
               @change="loadGroups"
@@ -380,15 +381,22 @@
             </div>
           </template>
 
-          <template #cell-status="{ value }">
-            <span
-              :class="[
-                'badge',
-                value === 'active' ? 'badge-success' : 'badge-danger',
-              ]"
-            >
-              {{ t("admin.accounts.status." + value) }}
-            </span>
+          <template #cell-status="{ row }">
+            <div class="flex items-center gap-2">
+              <Toggle
+                v-if="!authStore.isSimpleMode"
+                :model-value="row.status === 'active'"
+                :disabled="loading || statusUpdatingIDs.has(row.id)"
+                :aria-busy="statusUpdatingIDs.has(row.id)"
+                :aria-label="t(row.status === 'active' ? 'admin.groups.disableGroup' : 'admin.groups.enableGroup', { name: row.name })"
+                :data-testid="`group-status-toggle-${row.id}`"
+                class="disabled:cursor-wait disabled:opacity-50"
+                @update:model-value="handleToggleGroupStatus(row, $event)"
+              />
+              <span :class="['badge', row.status === 'active' ? 'badge-success' : 'badge-danger']">
+                {{ t("admin.accounts.status." + row.status) }}
+              </span>
+            </div>
           </template>
 
           <template #cell-actions="{ row }">
@@ -4974,6 +4982,7 @@ const capacityMap = ref<
   >
 >(new Map());
 const searchQuery = ref("");
+const statusUpdatingIDs = ref(new Set<number>());
 const filters = reactive({
   platform: "",
   status: "",
@@ -5829,6 +5838,29 @@ const loadGroups = async () => {
     if (abortController === currentController && !signal.aborted) {
       loading.value = false;
     }
+  }
+};
+
+const handleToggleGroupStatus = async (group: AdminGroup, enabled: boolean) => {
+  if (loading.value || statusUpdatingIDs.value.has(group.id)) return;
+  statusUpdatingIDs.value.add(group.id);
+  try {
+    const updated = await adminAPI.groups.toggleStatus(group.id, enabled ? "active" : "inactive");
+    const row = groups.value.find((item) => item.id === group.id);
+    if (row) {
+      row.status = updated.status;
+      row.updated_at = updated.updated_at;
+    }
+    appStore.showSuccess(t(updated.status === "active" ? "admin.groups.groupEnabled" : "admin.groups.groupDisabled"));
+    // Refresh filtered/sorted views, or cancel a concurrent list request that
+    // may still contain the old status. Preserve list-only fields otherwise.
+    if (loading.value || filters.status || sortState.sort_by === "status") {
+      await loadGroups();
+    }
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.groups.failedToToggleStatus")));
+  } finally {
+    statusUpdatingIDs.value.delete(group.id);
   }
 };
 
