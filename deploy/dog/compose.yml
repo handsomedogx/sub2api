@@ -12,6 +12,9 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
+      labels:
+        org.opencontainers.image.source: https://github.com/handsomedogx/sub2api
+        org.opencontainers.image.revision: ${SUB2API_COMMIT:-local}
       args:
         VERSION: ${SUB2API_VERSION:-local-dog}
         COMMIT: ${SUB2API_COMMIT:-local}
