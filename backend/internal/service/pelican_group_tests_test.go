@@ -504,6 +504,8 @@ func TestPelicanGroupTestCleanupAndHistoryPaging(t *testing.T) {
 }
 
 func TestPelicanGroupRouterRoutesThroughTheOpenAIScheduler(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	t.Cleanup(resetOpenAIAdvancedSchedulerSettingCacheForTest)
 	ctx := context.Background()
 	accounts := []Account{
 		{ID: 11, Name: "pool-a", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0},
