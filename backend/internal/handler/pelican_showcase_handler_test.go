@@ -218,3 +218,58 @@ func TestPelicanShowcaseHandler_APIDisabledPreservesJWTGallery(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, publicPelicanRequest(h, http.MethodGet, "", nil).Code)
 	require.Equal(t, http.StatusForbidden, publicPelicanRequest(h, http.MethodGet, "7", nil).Code)
 }
+
+func TestPelicanShowcaseHandler_GroupOrderRoundTripAndPublicCache(t *testing.T) {
+	values := map[string]string{service.SettingKeyPelicanShowcaseEnabled: "true"}
+	repo := &showcaseHandlerRepo{groups: []*service.PelicanShowcaseGroup{{ID: 3}, {ID: 4}, {ID: 5}}}
+	h := newShowcaseHandler(values, repo)
+	readOrder := func(public bool) []int64 {
+		w := httptest.NewRecorder()
+		if public {
+			w = publicPelicanRequest(h, http.MethodGet, "", nil)
+		} else {
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/pelican-showcase", nil)
+			h.List(c)
+		}
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		var envelope struct {
+			Data struct {
+				Groups []struct{ ID int64 } `json:"groups"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+		var order []int64
+		for _, group := range envelope.Data.Groups {
+			order = append(order, group.ID)
+		}
+		return order
+	}
+	put := func(body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/pelican-showcase/settings", strings.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h.UpdateSettings(c)
+		return w
+	}
+
+	require.Equal(t, []int64{3, 4, 5}, readOrder(true), "prime the public cache before saving")
+	w := put(`{"enabled":true,"group_order":[5,99,3],"max_items":20}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), `"group_order":[5,99,3]`)
+	require.Equal(t, []int64{5, 3, 4}, readOrder(false))
+	require.Equal(t, []int64{5, 3, 4}, readOrder(true), "settings changes invalidate the cached order")
+	w = put(`{"enabled":true,"max_items":30}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), `"group_order":[5,99,3]`, "older clients preserve the order")
+
+	saved := values[service.SettingKeyPelicanShowcaseConfig]
+	for _, bad := range []string{`{"group_order":[3,3]}`, `{"group_order":[0]}`, `{"group_order":[-1]}`, `{"group_order":"5,3"}`} {
+		require.Equal(t, http.StatusBadRequest, put(bad).Code, bad)
+		require.Equal(t, saved, values[service.SettingKeyPelicanShowcaseConfig])
+	}
+	w = put(`{"enabled":true,"group_order":[],"max_items":20}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Equal(t, []int64{3, 4, 5}, readOrder(true))
+}

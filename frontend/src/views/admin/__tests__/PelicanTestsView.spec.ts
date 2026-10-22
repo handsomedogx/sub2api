@@ -64,6 +64,10 @@ const mountView = () => mount(PelicanTestsView, {
       PlatformIcon: true,
       Select: SelectStub,
       Toggle: ToggleStub,
+      VueDraggable: {
+        name: 'VueDraggable', props: ['modelValue', 'disabled', 'handle'], emits: ['update:modelValue'],
+        template: '<div><slot /></div>',
+      },
       BaseDialog: { props: ['show', 'title'], template: '<div v-if="show" class="dialog"><h3>{{ title }}</h3><slot /><slot name="footer" /></div>' },
       PelicanShowcaseApiDialog: {
         props: ['show', 'enabled'],
@@ -97,6 +101,74 @@ afterEach(() => {
 })
 
 describe('PelicanTestsView', () => {
+  const orderIDs = () => wrapper.findAll('[data-testid^="pelican-order-group-"]').map((row) => row.attributes('data-testid'))
+  const planIDs = () => wrapper.findAll('.plan-row').map((row) => row.attributes('data-testid'))
+
+  it('edits one order entry per group and applies the saved order to all its plans', async () => {
+    api.listPlans.mockResolvedValue([plan(), plan({ id: 9 }), plan({ id: 8, group_id: 5 })])
+    api.updateShowcaseSettings.mockImplementation(async (value) => value)
+    wrapper = mountView()
+    await flushPromises()
+    expect(orderIDs()).toEqual(['pelican-order-group-4', 'pelican-order-group-5'])
+    expect(wrapper.get('[data-testid="pelican-order-up-4"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="pelican-order-down-5"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="pelican-order-down-4"]').trigger('click')
+    expect(orderIDs()).toEqual(['pelican-order-group-5', 'pelican-order-group-4'])
+    expect(planIDs()).toEqual(['pelican-plan-7', 'pelican-plan-9', 'pelican-plan-8'])
+    await wrapper.get('[data-testid="pelican-showcase-settings"] form').trigger('submit')
+    await flushPromises()
+    expect(api.updateShowcaseSettings).toHaveBeenCalledWith({ ...settings, group_order: [5, 4] })
+    expect(planIDs()).toEqual(['pelican-plan-8', 'pelican-plan-7', 'pelican-plan-9'])
+    expect(wrapper.get('[data-testid="pelican-showcase-save"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('loads the saved order, appends new groups, and can restore the default', async () => {
+    api.getShowcaseSettings.mockResolvedValue({ ...settings, group_order: [5, 99, 4] })
+    api.listPlans.mockResolvedValue([plan({ id: 6, group_id: 6 }), plan(), plan({ id: 8, group_id: 5 })])
+    api.updateShowcaseSettings.mockImplementation(async (value) => value)
+    wrapper = mountView()
+    await flushPromises()
+    expect(planIDs()).toEqual(['pelican-plan-8', 'pelican-plan-7', 'pelican-plan-6'])
+    expect(orderIDs()).toEqual(['pelican-order-group-5', 'pelican-order-group-4', 'pelican-order-group-6'])
+    await wrapper.get('[data-testid="pelican-group-order-reset"]').trigger('click')
+    expect(orderIDs()).toEqual(['pelican-order-group-6', 'pelican-order-group-4', 'pelican-order-group-5'])
+    await wrapper.get('[data-testid="pelican-showcase-settings"] form').trigger('submit')
+    await flushPromises()
+    expect(api.updateShowcaseSettings).toHaveBeenCalledWith({ ...settings, group_order: [] })
+    expect(planIDs()).toEqual(['pelican-plan-6', 'pelican-plan-7', 'pelican-plan-8'])
+  })
+
+  it('keeps a dragged order through polling, refresh and a failed save', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    api.updateShowcaseSettings.mockRejectedValue(new Error('save unavailable'))
+    wrapper = mountView()
+    await flushPromises()
+    const draggable = wrapper.getComponent({ name: 'VueDraggable' })
+    draggable.vm.$emit('update:modelValue', [...draggable.props('modelValue')].reverse())
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(15000)
+    await wrapper.get('[data-testid="pelican-tests-refresh"]').trigger('click')
+    await flushPromises()
+    expect(orderIDs()).toEqual(['pelican-order-group-5', 'pelican-order-group-4'])
+    await wrapper.get('[data-testid="pelican-showcase-settings"] form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('save unavailable')
+    expect(planIDs()).toEqual(['pelican-plan-7', 'pelican-plan-8'])
+    expect(orderIDs()).toEqual(['pelican-order-group-5', 'pelican-order-group-4'])
+    expect(wrapper.get('[data-testid="pelican-showcase-save"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('refreshes the order changed elsewhere when there are no local edits', async () => {
+    wrapper = mountView()
+    await flushPromises()
+    api.getShowcaseSettings.mockResolvedValue({ ...settings, group_order: [5, 4] })
+    await wrapper.get('[data-testid="pelican-tests-refresh"]').trigger('click')
+    await flushPromises()
+    expect(orderIDs()).toEqual(['pelican-order-group-5', 'pelican-order-group-4'])
+    expect(planIDs()).toEqual(['pelican-plan-8', 'pelican-plan-7'])
+    expect(wrapper.get('[data-testid="pelican-showcase-save"]').attributes('disabled')).toBeDefined()
+  })
+
   it('shows USD totals beside group names and preserves unknown, zero and partial costs', async () => {
     api.listPlans.mockResolvedValue([plan(), plan({ id: 8, today_cost_usd: 0, total_cost_usd: 0.4, total_cost_incomplete: true })])
     api.listResults.mockResolvedValue({ items: [result(), result({ id: 89, cost_usd: null }), result({ id: 88, cost_usd: 0 }), result({ id: 87, cost_usd: 0.0000001 }), result({ id: 86, cost_usd: 0.2, cost_incomplete: true })], total: 5 })

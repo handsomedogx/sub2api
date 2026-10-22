@@ -1004,6 +1004,8 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 	{
 		monitors.GET("", h.Admin.ChannelMonitor.List)
 		monitors.POST("", h.Admin.ChannelMonitor.Create)
+		monitors.GET("/display-order", h.Admin.ChannelMonitor.ListDisplayOrder)
+		monitors.PUT("/display-order", h.Admin.ChannelMonitor.UpdateDisplayOrder)
 		monitors.GET("/:id", h.Admin.ChannelMonitor.Get)
 		monitors.POST("/:id/duplicate", h.Admin.ChannelMonitor.Duplicate)
 		monitors.PUT("/:id", h.Admin.ChannelMonitor.Update)

@@ -27,11 +27,13 @@ const (
 // PelicanShowcaseConfig bounds the gallery: MaxItems per group, plus an optional age
 // limit (AutoCleanup + RetentionDays). The gallery shows the groups that have a Pelican
 // group test plan and keeps its own copies, so these limits are independent of the admin
-// test history. Configs saved before group tests also carry "group_ids"; it is ignored.
+// test history. GroupOrder only controls their Pelican display order. Configs saved
+// before group tests also carry "group_ids"; it is ignored.
 type PelicanShowcaseConfig struct {
-	MaxItems      int  `json:"max_items"`
-	AutoCleanup   bool `json:"auto_cleanup"`
-	RetentionDays int  `json:"retention_days"`
+	GroupOrder    []int64 `json:"group_order,omitempty"`
+	MaxItems      int     `json:"max_items"`
+	AutoCleanup   bool    `json:"auto_cleanup"`
+	RetentionDays int     `json:"retention_days"`
 }
 
 func DefaultPelicanShowcaseConfig() PelicanShowcaseConfig {
@@ -44,6 +46,13 @@ func DefaultPelicanShowcaseConfig() PelicanShowcaseConfig {
 
 // NormalizePelicanShowcaseConfig fills zero limits with defaults and rejects out-of-range values.
 func NormalizePelicanShowcaseConfig(cfg PelicanShowcaseConfig) (PelicanShowcaseConfig, error) {
+	seen := make(map[int64]bool, len(cfg.GroupOrder))
+	for _, id := range cfg.GroupOrder {
+		if id <= 0 || seen[id] {
+			return cfg, fmt.Errorf("showcase group order must contain unique positive group IDs")
+		}
+		seen[id] = true
+	}
 	if cfg.MaxItems == 0 {
 		cfg.MaxItems = PelicanShowcaseDefaultMaxItems
 	}
@@ -127,6 +136,22 @@ func (s *SettingService) UpdatePelicanShowcaseSettings(ctx context.Context, enab
 	if err != nil {
 		return PelicanShowcaseRuntime{}, infraerrors.BadRequest("INVALID_PELICAN_SHOWCASE", err.Error())
 	}
+	var currentAPIEnabled bool
+	if apiEnabled == nil || cfg.GroupOrder == nil {
+		vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyPelicanShowcaseAPIEnabled, SettingKeyPelicanShowcaseConfig})
+		if err != nil {
+			return PelicanShowcaseRuntime{}, err
+		}
+		currentAPIEnabled = pelicanShowcaseAPIEnabled(vals)
+		// Older clients omit the order; an explicit empty array restores the default.
+		if cfg.GroupOrder == nil {
+			current, err := parsePelicanShowcaseConfig(vals[SettingKeyPelicanShowcaseConfig])
+			if err != nil {
+				return PelicanShowcaseRuntime{}, err
+			}
+			normalized.GroupOrder = current.GroupOrder
+		}
+	}
 	raw, err := json.Marshal(normalized)
 	if err != nil {
 		return PelicanShowcaseRuntime{}, err
@@ -135,16 +160,9 @@ func (s *SettingService) UpdatePelicanShowcaseSettings(ctx context.Context, enab
 		SettingKeyPelicanShowcaseEnabled: strconv.FormatBool(enabled),
 		SettingKeyPelicanShowcaseConfig:  string(raw),
 	}
-	var currentAPIEnabled bool
 	if apiEnabled != nil {
 		currentAPIEnabled = *apiEnabled
 		updates[SettingKeyPelicanShowcaseAPIEnabled] = strconv.FormatBool(*apiEnabled)
-	} else {
-		vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyPelicanShowcaseAPIEnabled})
-		if err != nil {
-			return PelicanShowcaseRuntime{}, err
-		}
-		currentAPIEnabled = pelicanShowcaseAPIEnabled(vals)
 	}
 	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
 		return PelicanShowcaseRuntime{}, err

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -170,6 +171,21 @@ func (s *PelicanShowcaseService) View(ctx context.Context, now time.Time) (*Peli
 	}
 	if len(groups) == 0 {
 		return view, nil
+	}
+	// Unlisted groups follow the configured groups in their existing display order.
+	if len(cfg.GroupOrder) > 0 {
+		positions := make(map[int64]int, len(cfg.GroupOrder))
+		for i, id := range cfg.GroupOrder {
+			positions[id] = i
+		}
+		rank := func(id int64) int {
+			if position, ok := positions[id]; ok {
+				return position
+			}
+			return len(positions)
+		}
+		groups = append([]*PelicanShowcaseGroup(nil), groups...)
+		sort.SliceStable(groups, func(i, j int) bool { return rank(groups[i].ID) < rank(groups[j].ID) })
 	}
 	groupIDs := make([]int64, 0, len(groups))
 	byID := make(map[int64]*PelicanShowcaseGroup, len(groups))

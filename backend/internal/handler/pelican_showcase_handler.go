@@ -67,15 +67,17 @@ func (h *PelicanShowcaseHandler) DeleteItem(c *gin.Context) {
 
 // pelicanShowcaseSettings is the gallery switch plus its limits, as edited on the admin page.
 type pelicanShowcaseSettings struct {
-	Enabled       bool `json:"enabled"`
-	APIEnabled    bool `json:"api_enabled"`
-	MaxItems      int  `json:"max_items"`
-	AutoCleanup   bool `json:"auto_cleanup"`
-	RetentionDays int  `json:"retention_days"`
+	GroupOrder    []int64 `json:"group_order,omitempty"`
+	Enabled       bool    `json:"enabled"`
+	APIEnabled    bool    `json:"api_enabled"`
+	MaxItems      int     `json:"max_items"`
+	AutoCleanup   bool    `json:"auto_cleanup"`
+	RetentionDays int     `json:"retention_days"`
 }
 
 func pelicanShowcaseSettingsFrom(runtime service.PelicanShowcaseRuntime) pelicanShowcaseSettings {
 	return pelicanShowcaseSettings{
+		GroupOrder:    runtime.Config.GroupOrder,
 		Enabled:       runtime.Enabled,
 		APIEnabled:    runtime.APIEnabled,
 		MaxItems:      runtime.Config.MaxItems,
@@ -105,6 +107,7 @@ func (h *PelicanShowcaseHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 	runtime, err := h.showcase.UpdateSettings(c.Request.Context(), req.Enabled, service.PelicanShowcaseConfig{
+		GroupOrder:    req.GroupOrder,
 		MaxItems:      req.MaxItems,
 		AutoCleanup:   req.AutoCleanup,
 		RetentionDays: req.RetentionDays,

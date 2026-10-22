@@ -90,6 +90,7 @@
           @reload="reload"
           @create="openCreateDialog"
           @manage-templates="showTemplateManager = true"
+          @order="showOrderDialog = true"
           @search-input="handleSearch"
         />
       </template>
@@ -167,6 +168,7 @@
       </TablePageLayout>
     </div>
 
+    <MonitorOrderDialog :show="showOrderDialog" @close="showOrderDialog = false" @saved="onOrderSaved" />
     <MonitorFormDialog
       :show="showDialog"
       :monitor="editing"
@@ -232,6 +234,7 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import MonitorFiltersBar from '@/components/admin/monitor/MonitorFiltersBar.vue'
+import MonitorOrderDialog from '@/components/admin/monitor/MonitorOrderDialog.vue'
 import MonitorFormDialog from '@/components/admin/monitor/MonitorFormDialog.vue'
 import MonitorTemplateManagerDialog from '@/components/admin/monitor/MonitorTemplateManagerDialog.vue'
 import MonitorRunResultDialog from '@/components/admin/monitor/MonitorRunResultDialog.vue'
@@ -281,6 +284,7 @@ const {
 } = useChannelMonitorFormat()
 
 const monitors = ref<ChannelMonitor[]>([])
+const showOrderDialog = ref(false)
 const loading = ref(false)
 const runningId = ref<number | null>(null)
 const searchQuery = ref('')
@@ -344,6 +348,11 @@ async function reload() {
       abortController = null
     }
   }
+}
+
+function onOrderSaved() {
+  appStore.showSuccess(t('admin.channelMonitor.order.saved'))
+  void reload()
 }
 
 function handleSearch() {

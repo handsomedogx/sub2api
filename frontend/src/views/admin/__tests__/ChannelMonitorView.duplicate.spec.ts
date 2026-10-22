@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChannelMonitor } from '@/api/admin/channelMonitor'
 import MonitorActionsCell from '@/components/admin/monitor/MonitorActionsCell.vue'
+import MonitorFiltersBar from '@/components/admin/monitor/MonitorFiltersBar.vue'
+import MonitorOrderDialog from '@/components/admin/monitor/MonitorOrderDialog.vue'
 import ChannelMonitorView from '@/views/admin/ChannelMonitorView.vue'
 
 const {
@@ -112,6 +114,7 @@ function mountView() {
         TablePageLayout: TablePageLayoutStub,
         DataTable: DataTableStub,
         MonitorFiltersBar: true,
+        MonitorOrderDialog: true,
         Pagination: true,
         ConfirmDialog: true,
         EmptyState: true,
@@ -138,6 +141,24 @@ describe('ChannelMonitorView duplicate action', () => {
       pages: 1,
     })
     duplicateMonitor.mockResolvedValue(makeMonitor({ id: 43, name: 'primary (Copy)', enabled: false }))
+  })
+
+  it('opens V1 ordering from the filter bar and refreshes after saving', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const dialog = wrapper.getComponent(MonitorOrderDialog)
+    expect(dialog.props('show')).toBe(false)
+    wrapper.getComponent(MonitorFiltersBar).vm.$emit('order')
+    await flushPromises()
+    expect(dialog.props('show')).toBe(true)
+    const callsBeforeSave = listMonitors.mock.calls.length
+    dialog.vm.$emit('saved')
+    dialog.vm.$emit('close')
+    await flushPromises()
+    expect(dialog.props('show')).toBe(false)
+    expect(showSuccess).toHaveBeenCalledWith('admin.channelMonitor.order.saved')
+    expect(listMonitors.mock.calls.length).toBeGreaterThan(callsBeforeSave)
+    wrapper.unmount()
   })
 
   it('duplicates the selected monitor, reports success, and refreshes the list', async () => {

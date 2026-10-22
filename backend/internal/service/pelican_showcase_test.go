@@ -245,6 +245,39 @@ func TestPelicanShowcaseViewAndItemVisibility(t *testing.T) {
 	require.NoError(t, svc.Remove(ctx, 10))
 }
 
+func TestPelicanShowcaseGroupOrder(t *testing.T) {
+	settings := enabledShowcase()
+	repo := &showcaseRepoStub{
+		groups: []*PelicanShowcaseGroup{{ID: 5}, {ID: 3}, {ID: 8}, {ID: 9}},
+		items:  []*PelicanShowcaseItem{{ID: 10, GroupID: 3}, {ID: 11, GroupID: 3}},
+	}
+	svc := &PelicanShowcaseService{repo: repo, settings: settings}
+	for _, tc := range []struct {
+		order []int64
+		want  []int64
+	}{
+		{[]int64{3, 99, 5}, []int64{3, 5, 8, 9}},
+		{[]int64{9}, []int64{9, 5, 3, 8}},
+		{nil, []int64{5, 3, 8, 9}},
+		{[]int64{}, []int64{5, 3, 8, 9}},
+	} {
+		settings.runtime.Config.GroupOrder = tc.order
+		view, err := svc.View(context.Background(), time.Now())
+		require.NoError(t, err)
+		var got []int64
+		for _, group := range view.Groups {
+			got = append(got, group.ID)
+			if group.ID == 3 {
+				require.Equal(t, int64(10), group.Items[0].ID)
+				require.Equal(t, int64(11), group.Items[1].ID)
+			}
+		}
+		require.Equal(t, tc.want, got)
+		require.Equal(t, tc.want, repo.listIDs)
+		require.Equal(t, int64(5), repo.groups[0].ID, "sorting does not mutate the repository slice")
+	}
+}
+
 func TestScheduledSaveResultNoLongerFeedsTheShowcase(t *testing.T) {
 	results := &pelicanResults{}
 	svc := NewScheduledTestService(&pelicanPlanRepo{}, results)

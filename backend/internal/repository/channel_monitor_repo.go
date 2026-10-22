@@ -189,7 +189,7 @@ func (r *channelMonitorRepository) List(ctx context.Context, params service.Chan
 	}
 
 	rows, err := q.
-		Order(dbent.Desc(channelmonitor.FieldID)).
+		Order(channelMonitorDisplayOrder).
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		All(ctx)
@@ -209,6 +209,7 @@ func (r *channelMonitorRepository) List(ctx context.Context, params service.Chan
 func (r *channelMonitorRepository) ListEnabled(ctx context.Context) ([]*service.ChannelMonitor, error) {
 	rows, err := r.client.ChannelMonitor.Query().
 		Where(channelmonitor.EnabledEQ(true)).
+		Order(channelMonitorDisplayOrder).
 		All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list enabled monitors: %w", err)

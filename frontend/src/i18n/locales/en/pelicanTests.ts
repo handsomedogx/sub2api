@@ -14,6 +14,14 @@ export default {
   create: 'New group test',
   loadError: 'Failed to load the Pelican Showcase',
   accountNote: 'Account-level Pelican scheduled tests (Accounts → More → Pelican) remain available for checking a single account, but their results no longer reach the user showcase.',
+  order: {
+    title: 'Group order',
+    hint: 'Drag or use the arrows, then save to apply to the test list, user showcase and public API. New groups appear last. The global group order is unchanged.',
+    reset: 'Restore default order',
+    drag: 'Drag {name} to reorder',
+    up: 'Move {name} up',
+    down: 'Move {name} down',
+  },
   showcase: {
     title: 'User showcase',
     hint: 'Only groups with a group test are shown. Account names are never shown.',

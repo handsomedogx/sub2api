@@ -79,6 +79,8 @@ export interface PelicanGroupTestPlanInput {
 }
 
 export interface PelicanShowcaseSettings {
+  /** Pelican-only order. Unlisted groups follow in the global group order. */
+  group_order?: number[]
   enabled: boolean
   api_enabled: boolean
   max_items: number

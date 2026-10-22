@@ -12,7 +12,7 @@
           <RouterLink to="/pelican-showcase" class="btn btn-secondary inline-flex items-center gap-2">
             <Icon name="eye" size="sm" />{{ t('pelicanTests.viewShowcase') }}
           </RouterLink>
-          <button class="btn btn-secondary inline-flex items-center gap-2" :disabled="loading" @click="load">
+          <button class="btn btn-secondary inline-flex items-center gap-2" :disabled="loading || savingSettings" data-testid="pelican-tests-refresh" @click="load">
             <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />{{ t('pelicanTests.refresh') }}
           </button>
           <button class="btn btn-primary inline-flex items-center gap-2" data-testid="pelican-tests-create" @click="openEditor()">
@@ -67,6 +67,30 @@
                 </div>
                 <p class="field-hint">{{ t('pelicanTests.showcase.retentionDaysHint') }}</p>
               </template>
+              <div v-if="plansLoaded && sortableGroups.length" class="mt-5" data-testid="pelican-group-order">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <strong class="text-sm">{{ t('pelicanTests.order.title') }}</strong>
+                  <button type="button" class="link-button text-xs" :disabled="!draft.group_order?.length" data-testid="pelican-group-order-reset" @click="draft.group_order = []">
+                    {{ t('pelicanTests.order.reset') }}
+                  </button>
+                </div>
+                <p class="field-hint mb-3">{{ t('pelicanTests.order.hint') }}</p>
+                <VueDraggable v-model="sortableGroups" :animation="150" :disabled="savingSettings" handle=".group-order-handle" class="max-h-72 space-y-2 overflow-y-auto" data-testid="pelican-group-order-list">
+                  <div v-for="(group, index) in sortableGroups" :key="group.id" class="flex items-center gap-2 rounded-lg border border-gray-200 p-2 dark:border-dark-700" :data-testid="`pelican-order-group-${group.id}`">
+                    <button type="button" class="group-order-handle cursor-grab touch-none px-1 text-gray-400 active:cursor-grabbing" :aria-label="t('pelicanTests.order.drag', { name: group.name })">
+                      <span aria-hidden="true">⠿</span>
+                    </button>
+                    <PlatformIcon :platform="group.platform as GroupPlatform" size="sm" />
+                    <span class="min-w-0 flex-1 truncate text-sm" :title="group.name">{{ group.name }}</span>
+                    <button type="button" class="btn btn-secondary !p-1.5" :disabled="index === 0" :aria-label="t('pelicanTests.order.up', { name: group.name })" :data-testid="`pelican-order-up-${group.id}`" @click="moveGroup(index, -1)">
+                      <Icon name="chevronUp" size="sm" />
+                    </button>
+                    <button type="button" class="btn btn-secondary !p-1.5" :disabled="index === sortableGroups.length - 1" :aria-label="t('pelicanTests.order.down', { name: group.name })" :data-testid="`pelican-order-down-${group.id}`" @click="moveGroup(index, 1)">
+                      <Icon name="chevronDown" size="sm" />
+                    </button>
+                  </div>
+                </VueDraggable>
+              </div>
               <div class="settings-actions">
                 <span>{{ settingsDirty ? t('pelicanTests.showcase.unsaved') : t('pelicanTests.showcase.savedState') }}</span>
                 <button class="btn btn-primary" :disabled="savingSettings || !settingsDirty" data-testid="pelican-showcase-save">
@@ -90,7 +114,7 @@
             <button class="btn btn-secondary" @click="openEditor()">{{ t('pelicanTests.create') }}</button>
           </div>
           <ul v-else class="plan-list">
-            <li v-for="plan in plans" :key="plan.id" class="plan-row" :data-testid="`pelican-plan-${plan.id}`">
+            <li v-for="plan in orderedPlans" :key="plan.id" class="plan-row" :data-testid="`pelican-plan-${plan.id}`">
               <div class="plan-main">
                 <span class="group-icon" :class="platformBadgeLightClass(plan.group_platform)">
                   <PlatformIcon :platform="plan.group_platform as GroupPlatform" size="sm" />
@@ -335,6 +359,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { VueDraggable } from 'vue-draggable-plus'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import SmartOpsNav from '@/components/admin/operations/SmartOpsNav.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -408,6 +433,33 @@ let resultsRequest = 0
 let polling = false
 
 const settingsDirty = computed(() => !!draft.value && JSON.stringify(draft.value) !== JSON.stringify(settings.value))
+function orderPlans(order: number[] = []) {
+  const positions = new Map(order.map((id, index) => [id, index]))
+  return [...plans.value].sort((a, b) => (positions.get(a.group_id) ?? order.length) - (positions.get(b.group_id) ?? order.length))
+}
+const orderedPlans = computed(() => orderPlans(settings.value?.group_order))
+const sortableGroups = computed({
+  get: () => {
+    const seen = new Set<number>()
+    return orderPlans(draft.value?.group_order).filter((plan) => {
+      if (seen.has(plan.group_id)) return false
+      seen.add(plan.group_id)
+      return true
+    }).map((plan) => ({ id: plan.group_id, name: plan.group_name, platform: plan.group_platform }))
+  },
+  set: (value) => {
+    if (draft.value) draft.value.group_order = value.map((group) => group.id)
+  },
+})
+
+function moveGroup(index: number, direction: number) {
+  const next = [...sortableGroups.value]
+  const target = index + direction
+  if (savingSettings.value || target < 0 || target >= next.length) return
+  ;[next[index], next[target]] = [next[target], next[index]]
+  sortableGroups.value = next
+}
+
 const groupOptions = computed(() => {
   const options = groups.value.map((group) => ({ value: group.id, label: `${group.name} · ${platformLabel(group.platform)}` }))
   // An edited plan's group may be disabled or deleted; still show its name.
@@ -469,7 +521,7 @@ function succeed(message: string) {
 }
 
 async function load() {
-  if (loading.value) return
+  if (loading.value || savingSettings.value) return
   loading.value = true
   try {
     const [planList, showcase] = await Promise.all([
@@ -480,9 +532,10 @@ async function load() {
     if (!alive) return
     plans.value = planList
     plansLoaded.value = true
+    const keepDraft = draft.value && settingsDirty.value
     settings.value = showcase
     // Keep an admin's unsaved edits across a refresh.
-    if (!draft.value || !settingsDirty.value) draft.value = { ...showcase }
+    if (!keepDraft) draft.value = { ...showcase }
   } catch (err: unknown) {
     fail(err, t('pelicanTests.loadError'))
   } finally {

@@ -97,3 +97,30 @@ func TestUpdatePelicanShowcaseOmittedAPISwitchReadFailureDoesNotWrite(t *testing
 	require.ErrorIs(t, err, repo.readErr)
 	require.Nil(t, repo.saved)
 }
+
+func TestUpdatePelicanShowcaseGroupOrder(t *testing.T) {
+	repo := &showcaseRuntimeSettingRepo{values: map[string]string{}}
+	svc := &SettingService{settingRepo: repo}
+	ctx := context.Background()
+	_, err := svc.UpdatePelicanShowcaseSettings(ctx, true, PelicanShowcaseConfig{GroupOrder: []int64{9, 3}}, nil)
+	require.NoError(t, err)
+	runtime, err := svc.GetPelicanShowcaseRuntime(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []int64{9, 3}, runtime.Config.GroupOrder)
+
+	// Existing clients can change limits without erasing the order.
+	runtime, err = svc.UpdatePelicanShowcaseSettings(ctx, true, PelicanShowcaseConfig{MaxItems: 30}, nil)
+	require.NoError(t, err)
+	require.Equal(t, []int64{9, 3}, runtime.Config.GroupOrder)
+	saved := repo.values[SettingKeyPelicanShowcaseConfig]
+	for _, invalid := range [][]int64{{3, 3}, {0}, {-1}} {
+		_, err := svc.UpdatePelicanShowcaseSettings(ctx, true, PelicanShowcaseConfig{GroupOrder: invalid}, nil)
+		require.Error(t, err)
+		require.Equal(t, saved, repo.values[SettingKeyPelicanShowcaseConfig])
+	}
+	_, err = svc.UpdatePelicanShowcaseSettings(ctx, true, PelicanShowcaseConfig{GroupOrder: []int64{}}, nil)
+	require.NoError(t, err)
+	runtime, err = svc.GetPelicanShowcaseRuntime(ctx)
+	require.NoError(t, err)
+	require.Empty(t, runtime.Config.GroupOrder)
+}

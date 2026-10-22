@@ -36,6 +36,9 @@
 
     <!-- Right: Actions -->
     <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
+      <button type="button" class="btn btn-secondary" data-testid="monitor-v1-order-open" @click="$emit('order')">
+        <Icon name="arrowUp" size="md" class="mr-2" />{{ t('admin.channelMonitor.order.button') }}
+      </button>
       <button
         @click="$emit('reload')"
         :disabled="loading"
@@ -84,6 +87,7 @@ defineProps<{
 }>()
 
 defineEmits<{
+  (e: 'order'): void
   (e: 'reload'): void
   (e: 'create'): void
   (e: 'manage-templates'): void

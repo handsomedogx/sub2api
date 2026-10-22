@@ -26,6 +26,8 @@ type ChannelMonitorRepository interface {
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, params ChannelMonitorListParams) ([]*ChannelMonitor, int64, error)
 	FindByDuplicateOperationID(ctx context.Context, operationID string) (*ChannelMonitor, error)
+	ListDisplayOrder(ctx context.Context) ([]ChannelMonitorOrderItem, error)
+	UpdateDisplayOrder(ctx context.Context, ids []int64) error
 
 	// 调度器辅助
 	ListEnabled(ctx context.Context) ([]*ChannelMonitor, error)

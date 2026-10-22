@@ -525,6 +525,18 @@ export default {
 
     // Channel Monitor
     channelMonitor: {
+      order: {
+        button: '调整排序',
+        title: 'V1 渠道排序',
+        retry: '重试',
+        saved: '渠道排序已保存',
+        hint: '使用上下箭头调整渠道顺序，保存后同步到管理列表和用户侧渠道状态页。这里包含全部渠道，不受列表分页和筛选影响；停用渠道保留位置，新增渠道排在已排序渠道之后。',
+        up: '上移 {name}',
+        down: '下移 {name}',
+        loadFailed: '加载渠道排序失败',
+        saveFailed: '保存渠道排序失败',
+        conflict: '渠道列表已发生变化，请关闭并重新打开排序后再试。',
+      },
       title: '渠道监控',
       description: '监测各渠道的可用性、延迟和状态',
       searchPlaceholder: '搜索监控名称...',

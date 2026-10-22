@@ -525,6 +525,18 @@ export default {
 
     // Channel Monitor
     channelMonitor: {
+      order: {
+        button: 'Reorder',
+        title: 'V1 channel order',
+        retry: 'Retry',
+        saved: 'Channel order saved',
+        hint: 'Use the arrows, then save to apply to the admin list and user channel status page. All channels are included regardless of pagination or filters. Disabled channels keep their positions; new channels follow the saved list.',
+        up: 'Move {name} up',
+        down: 'Move {name} down',
+        loadFailed: 'Failed to load channel order',
+        saveFailed: 'Failed to save channel order',
+        conflict: 'The channel list changed. Close and reopen sorting, then try again.',
+      },
       title: 'Channel Monitor',
       description: 'Monitor channel availability, latency and status',
       searchPlaceholder: 'Search monitor name...',
