@@ -101,6 +101,12 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		return finalizeOperationalOrDegraded(res, latency, latencyMs)
 	}
 
+	if strings.TrimSpace(respText) == "" {
+		res.Status = MonitorStatusFailed
+		res.Message = monitorEmptyFinalAnswerMessage(rawBody)
+		return res
+	}
+
 	if !validateChallenge(respText, challenge.Expected) {
 		res.Status = MonitorStatusFailed
 		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("challenge mismatch (expected %s, got %q)", challenge.Expected, respText)))
@@ -108,6 +114,24 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	}
 
 	return finalizeOperationalOrDegraded(res, latency, latencyMs)
+}
+
+// Report bounded probe failures without exposing private reasoning or treating it
+// as an answer. A token-limited response can contain reasoning but no final text.
+func monitorEmptyFinalAnswerMessage(rawBody string) string {
+	response := gjson.Parse(rawBody)
+	if response.Get("choices.0.finish_reason").String() == "length" ||
+		response.Get("incomplete_details.reason").String() == "max_output_tokens" ||
+		response.Get("stop_reason").String() == "max_tokens" ||
+		response.Get("candidates.0.finishReason").String() == "MAX_TOKENS" {
+		return "probe output token limit reached before a final answer; increase the output limit or disable thinking"
+	}
+	if strings.TrimSpace(response.Get("choices.0.message.reasoning_content").String()) != "" ||
+		response.Get(`output.#(type=="reasoning")`).Exists() ||
+		response.Get(`content.#(type=="thinking")`).Exists() {
+		return "upstream returned reasoning without a final answer"
+	}
+	return "upstream returned 2xx without final answer text"
 }
 
 // finalizeOperationalOrDegraded 负责走到最后一步的 operational/degraded 判定。
@@ -228,10 +252,27 @@ var providerKimiChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 var providerZhipuChatAdapter = newOpenAICompatibleChatAdapter(providerZhipuPath)
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
-var providerDeepseekChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+var providerDeepseekChatAdapter = newDeepseekMonitorChatAdapter()
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerMiniMaxChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+
+func newDeepseekMonitorChatAdapter() providerAdapter {
+	adapter := newOpenAICompatibleChatAdapter(providerOpenAIPath)
+	adapter.buildBody = func(model, prompt string) ([]byte, error) {
+		// DeepSeek enables thinking by default. The small health-check budget is
+		// for the final arithmetic answer, not a reasoning trace. Explicit merge
+		// or replace settings can still opt into thinking with a larger budget.
+		return json.Marshal(map[string]any{
+			"model":      model,
+			"messages":   []map[string]string{{"role": "user", "content": prompt}},
+			"max_tokens": monitorChallengeMaxTokens,
+			"stream":     false,
+			"thinking":   map[string]string{"type": "disabled"},
+		})
+	}
+	return adapter
+}
 
 func newOpenAICompatibleChatAdapter(path string) providerAdapter {
 	return providerAdapter{
