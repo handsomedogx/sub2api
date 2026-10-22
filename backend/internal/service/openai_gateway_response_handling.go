@@ -556,11 +556,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					sawResponseFailed = true
 				}
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+				if isOpenAIInvalidEncryptedContentSSE(dataBytes, eventType) {
+					failedMessage = openAIEncryptedErrorRedacted
+				}
 				if failedMessage == "" {
 					failedMessage = "Upstream response failed"
 				}
 				if isOpenAIInvalidEncryptedContentEvent(dataBytes) {
-					markOpenAIStreamInvalidEncryptedContent(c)
+					markOpenAIStreamInvalidEncryptedContent(c, dataBytes)
 				}
 				if account != nil && account.IsGrok() {
 					status := openAIStreamFailureStatus(dataBytes, failedMessage)
@@ -588,7 +591,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				if stageFirstOutput && !outputStarted && !responsesSemanticOutputSeen && !eventStartsClientOutput &&
 					!clientDisconnected && !cyberHit && ctx.Err() == nil && isOpenAIInvalidEncryptedContentSSE(dataBytes, eventType) {
 					if policy, ok := ctx.Value(openAIEncryptedContentRecoveryContextKey{}).(openAIEncryptedContentRecoveryPolicy); ok &&
-						openAICanRecoverEncryptedReasoningSSE(policy.body) {
+						len(openAIRejectedEncryptedDigests(policy.body, dataBytes)) == 1 {
 						// Discard staged metadata; Forward owns the shared retry budget.
 						streamEarlyErr = &openAIEncryptedContentRecoverySignal{
 							payload: append([]byte(nil), dataBytes...), eventType: eventType,
