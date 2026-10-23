@@ -2200,6 +2200,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
+		if clientDisconnected {
+			markPriorityDownstreamDisconnect(ctx)
+		}
 		return &openaiStreamingResultPassthrough{
 			usage:            usage,
 			clientDisconnect: clientDisconnected,

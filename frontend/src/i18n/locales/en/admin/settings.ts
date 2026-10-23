@@ -149,7 +149,7 @@ export default {
           enabled: 'Enable Risk Control',
           enabledHint: 'When off, the admin sidebar entry is hidden and gateway moderation is skipped.',
           cyberSessionBlock: 'Cyber session auto-block',
-          cyberSessionBlockHint: 'When enabled, locally block an upstream cyber_policy hit for the TTL only when an explicit session ID is available. Different sessions on the same API key remain isolated. Requests without a session ID are still evaluated upstream; IP, client type, cache keys and history length never identify a blocked session.',
+          cyberSessionBlockHint: 'When enabled, locally block an upstream cyber_policy hit for the TTL when an explicit session ID is available. Without a session ID, an identical retry is blocked using a fingerprint of the visible request content; other requests still go upstream. IP, client type, cache keys and history length never identify a blocked session.',
           riskControlUserAllowlist: 'Risk control allowlist',
           riskControlUserAllowlistHint: 'Enter any email keyword to search for matching users. Allowlisted users will not trigger account bans or local blocking, but upstream restrictions still apply. This feature is typically used for trusted downstream relays.',
           cyberSessionBlockTTL: 'Block TTL (seconds)',
