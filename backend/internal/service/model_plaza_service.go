@@ -34,7 +34,7 @@ type PlazaModel struct {
 // PlazaGroup 模型广场中以分组为顶层的条目。
 //
 // 与 AvailableGroupRef 相比多了 Description 与 Models；Models 合并该分组的
-// 网关账号目录与关联渠道模型，普通分组按平台隔离，Composite 分组保留具体平台。
+// 账号明确配置的模型与关联渠道模型，普通分组按平台隔离，Composite 分组保留具体平台。
 type PlazaGroup struct {
 	ID                 int64
 	Name               string
@@ -62,7 +62,7 @@ type PlazaGroup struct {
 
 // ModelPlazaService 聚合模型广场数据。
 //
-// 模型枚举来自网关账号目录及渠道配置；token 模型的展示单价与阶梯由 BillingService 的阶梯表
+// 模型枚举来自账号模型清单及渠道配置；token 模型的展示单价与阶梯由 BillingService 的阶梯表
 // 查询给出（与扣费走同一条解析链与计费函数），图片/按次模型沿用渠道/分组档位价。
 type ModelPlazaService struct {
 	channelRepo    ChannelRepository
@@ -94,7 +94,7 @@ func NewModelPlazaService(
 
 // ListGroups 返回模型广场数据：每个活跃分组附带其可用模型与定价。
 //
-// 合并网关模型目录与 Active 渠道专用模型，按分组平台和模型白名单隔离：
+// 合并账号模型清单与 Active 渠道专用模型，按分组平台和模型白名单隔离：
 //   - 渠道按 lower(name) 排序后遍历，保证同名模型去重结果确定；
 //   - 同分组同名模型「先见者胜」，仅当已存条目无定价而新条目有定价时升级替换；
 //   - token 模型的单价与阶梯按实收口径合成（见 ResolveContextPricingSchedule），
@@ -253,8 +253,9 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 	return out, nil
 }
 
-// accountModels 使用网关的账号枚举和平台目录，不向上游发起模型发现请求。
-// 无可调度账号的平台不生成目录；现有渠道条目仍独立展示。
+// accountModels 只汇总分组账号明确配置的模型，不补入网关或平台默认目录，
+// 也不向上游发起模型发现请求。无映射账号仅提供分组限制中明确列出的模型。
+// 使用原始映射，避免运行时自动补齐的透传模型出现在价格广场。
 func (s *ModelPlazaService) accountModels(ctx context.Context, g *Group) ([]SupportedModel, error) {
 	if s.gatewayService == nil || s.gatewayService.accountRepo == nil {
 		return nil, nil
@@ -263,44 +264,45 @@ func (s *ModelPlazaService) accountModels(ctx context.Context, g *Group) ([]Supp
 	if err != nil {
 		return nil, err
 	}
-	platforms := make(map[string]struct{})
+	type modelKey struct {
+		platform string
+		name     string
+	}
+	seen := make(map[modelKey]struct{})
+	var out []SupportedModel
 	for i := range accounts {
-		platform := accounts[i].Platform
+		account := &accounts[i]
+		platform := account.Platform
 		if g.Platform != PlatformComposite {
-			if platform != g.Platform && !mixedListingAccountAllowed(g.Platform, &accounts[i]) {
+			if platform != g.Platform && !mixedListingAccountAllowed(g.Platform, account) {
 				continue
 			}
 			platform = g.Platform
 		}
-		platforms[platform] = struct{}{}
-	}
-	var out []SupportedModel
-	for platform := range platforms {
-		ids := s.gatewayService.GetAvailableModels(ctx, &g.ID, platform)
-		// 复用 /v1/models 对未映射账号的平台目录；CN 供应商仅枚举账号映射。
-		if len(ids) == 0 && (platform != PlatformOpenAI || ids == nil) && !IsMultiProtocolAPIKeyProvider(platform) {
-			ids = DefaultModelIDsForPlatform(platform)
+		mapping := stringMappingFromRaw(account.Credentials["model_mapping"])
+		ids := make([]string, 0, len(mapping))
+		for model := range mapping {
+			ids = append(ids, model)
 		}
-		if g.ModelAllowlistEnabled() {
-			source := ids
-			if !IsMultiProtocolAPIKeyProvider(platform) {
-				source = ModelListingSource(platform, ids, DefaultModelIDsForPlatform(platform))
-			}
-			ids = g.ModelAllowlist.FilterForListing(source)
+		if len(mapping) == 0 {
+			ids = groupAllowedConcreteModels(account, &g.ID)
 		}
 		for _, id := range ids {
-			// 默认目录及白名单展开仍须有账号能够在本分组服务该模型，
-			// 不能把空枚举或平台默认值当成账号分组限制的豁免。
-			for i := range accounts {
-				account := &accounts[i]
-				if account.Platform != platform && (!mixedListingAccountAllowed(platform, account) || !mixedListingModelAllowed(platform, id)) {
-					continue
-				}
-				if account.IsModelSupportedInGroup(&g.ID, id) {
-					out = append(out, SupportedModel{Name: id, Platform: platform})
-					break
-				}
+			if strings.TrimSpace(id) == "" || strings.Contains(id, "*") || !g.ModelAllowlist.Allows(id) {
+				continue
 			}
+			if account.Platform != platform && !mixedListingModelAllowed(platform, id) {
+				continue
+			}
+			if !account.IsModelSupportedInGroup(&g.ID, id) {
+				continue
+			}
+			key := modelKey{platform: platform, name: id}
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, SupportedModel{Name: id, Platform: platform})
 		}
 	}
 	return out, nil

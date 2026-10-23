@@ -574,22 +574,86 @@ func TestListPlazaGroups_AccountCatalogKeepsChannelPricing(t *testing.T) {
 	require.Equal(t, 1.5, *models["grok-imagine-video"].Pricing.PerRequestPrice)
 }
 
-func TestListPlazaGroups_UnmappedAccountsUseGatewayCatalogs(t *testing.T) {
+func TestListPlazaGroups_UnmappedAccountsDoNotAdvertiseDefaultCatalogs(t *testing.T) {
 	svc := newPlazaService(nil, []Group{
 		{ID: 10, Platform: PlatformOpenAI},
 		{ID: 20, Platform: PlatformAnthropic},
 		{ID: 30, Platform: PlatformDeepseek},
+		{ID: 40, Platform: PlatformGrok},
+		{ID: 50, Platform: PlatformAntigravity},
 	}, nil)
 	svc.gatewayService = &GatewayService{accountRepo: &modelsListAccountRepoStub{byGroup: map[int64][]Account{
 		10: {{ID: 1, Platform: PlatformOpenAI}},
 		20: {{ID: 2, Platform: PlatformAnthropic}},
 		30: {{ID: 3, Platform: PlatformDeepseek}},
+		40: {{ID: 4, Platform: PlatformGrok}},
+		50: {{ID: 5, Platform: PlatformAntigravity}},
 	}}}
 	out, err := svc.ListGroups(context.Background())
 	require.NoError(t, err)
-	require.Len(t, out, 2, "CN provider without mapped models must not advertise Claude defaults")
-	require.Contains(t, plazaModelsByName(out[0].Models), "gpt-6-astra")
-	require.Contains(t, plazaModelsByName(out[1].Models), "claude-opus-4-8")
+	require.Empty(t, out, "没有明确模型清单的账号不应让广场展示平台默认目录")
+}
+
+func TestListPlazaGroups_AccountCatalogDoesNotSupplementConfiguredModels(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		platform    string
+		model       string
+		credentials map[string]any
+	}{
+		{
+			name: "anthropic allowlist", platform: PlatformAnthropic, model: "claude-sonnet-4-6",
+			credentials: map[string]any{"model_mapping": map[string]any{"claude-sonnet-4-6": "upstream"}},
+		},
+		{
+			name: "openai passthrough", platform: PlatformOpenAI, model: "gpt-6-astra",
+			credentials: map[string]any{"model_mapping": map[string]any{"gpt-6-astra": "upstream"}},
+		},
+		{
+			name: "antigravity runtime defaults", platform: PlatformAntigravity, model: "gemini-3-pro-preview",
+			credentials: map[string]any{"model_mapping": map[string]any{"gemini-3-pro-preview": "upstream"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newPlazaService(nil, []Group{{
+				ID: 10, Platform: tc.platform,
+				ModelAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"*"}},
+			}}, nil)
+			account := Account{ID: 1, Platform: tc.platform, Credentials: tc.credentials}
+			if tc.name == "openai passthrough" {
+				account.Extra = map[string]any{"openai_passthrough": true}
+			}
+			svc.gatewayService = &GatewayService{accountRepo: &modelsListAccountRepoStub{byGroup: map[int64][]Account{
+				10: {account, {ID: 2, Platform: tc.platform}},
+			}}}
+			out, err := svc.ListGroups(context.Background())
+			require.NoError(t, err)
+			require.Len(t, out, 1)
+			require.Len(t, out[0].Models, 1, "默认目录、无映射账号和通配白名单均不应补入额外模型")
+			require.Equal(t, tc.model, out[0].Models[0].Name)
+		})
+	}
+}
+
+func TestListPlazaGroups_UnmappedAccountOnlyUsesConcreteGroupModels(t *testing.T) {
+	for _, allowed := range [][]string{{"claude-haiku-*"}, {"claude-haiku-*", "claude-sonnet-4-6"}} {
+		svc := newPlazaService(nil, []Group{{
+			ID: 10, Platform: PlatformAnthropic,
+			ModelAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"claude-*", "claude-opus-4-8"}},
+		}}, nil)
+		svc.gatewayService = &GatewayService{accountRepo: &modelsListAccountRepoStub{byGroup: map[int64][]Account{
+			10: {{ID: 1, Platform: PlatformAnthropic, AccountGroups: []AccountGroup{{GroupID: 10, AllowedModels: allowed}}}},
+		}}}
+		out, err := svc.ListGroups(context.Background())
+		require.NoError(t, err)
+		if len(allowed) == 1 {
+			require.Empty(t, out, "通配限制不应展开平台默认目录")
+			continue
+		}
+		require.Len(t, out, 1)
+		require.Len(t, out[0].Models, 1)
+		require.Equal(t, "claude-sonnet-4-6", out[0].Models[0].Name)
+	}
 }
 
 func TestListPlazaGroups_WildcardsAreNotModelCards(t *testing.T) {
@@ -632,7 +696,7 @@ func TestListPlazaGroups_MixedGeminiAccounts(t *testing.T) {
 	}
 }
 
-func TestListPlazaGroups_DefaultCatalogHonorsAccountGroupLimits(t *testing.T) {
+func TestListPlazaGroups_AccountCatalogHonorsAccountGroupLimits(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		platform       string
@@ -647,13 +711,19 @@ func TestListPlazaGroups_DefaultCatalogHonorsAccountGroupLimits(t *testing.T) {
 			allowed:        []string{"claude-haiku-*"},
 			groupAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"claude-haiku-4-5-20251001", "claude-opus-4-8"}},
 		},
-		{name: "no matching defaults", platform: PlatformAnthropic, allowed: []string{"unknown-*"}, wantEmpty: true},
+		{name: "no matching configured models", platform: PlatformAnthropic, allowed: []string{"unknown-*"}, wantEmpty: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			g := Group{ID: 10, Platform: tc.platform, ModelAllowlist: tc.groupAllowlist}
 			svc := newPlazaService(nil, []Group{g}, nil)
 			svc.gatewayService = &GatewayService{accountRepo: &modelsListAccountRepoStub{byGroup: map[int64][]Account{
-				10: {{ID: 1, Platform: PlatformAnthropic, AccountGroups: []AccountGroup{{GroupID: 10, AllowedModels: tc.allowed}}}},
+				10: {{
+					ID: 1, Platform: PlatformAnthropic,
+					Credentials: map[string]any{"model_mapping": map[string]any{
+						"claude-haiku-4-5-20251001": "upstream", "claude-opus-4-8": "upstream", "claude-sonnet-4-6": "upstream",
+					}},
+					AccountGroups: []AccountGroup{{GroupID: 10, AllowedModels: tc.allowed}},
+				}},
 			}}}
 			out, err := svc.ListGroups(context.Background())
 			require.NoError(t, err)
