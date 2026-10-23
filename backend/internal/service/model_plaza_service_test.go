@@ -615,7 +615,8 @@ func TestListPlazaGroups_AccountCatalogDoesNotSupplementConfiguredModels(t *test
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := newPlazaService(nil, []Group{{
+			ch := plazaPricedChannel(1, "price catalog", []int64{10}, tc.platform, tc.model, "unconfigured-price-only-model")
+			svc := newPlazaService([]Channel{ch}, []Group{{
 				ID: 10, Platform: tc.platform,
 				ModelAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"*"}},
 			}}, nil)
@@ -629,8 +630,9 @@ func TestListPlazaGroups_AccountCatalogDoesNotSupplementConfiguredModels(t *test
 			out, err := svc.ListGroups(context.Background())
 			require.NoError(t, err)
 			require.Len(t, out, 1)
-			require.Len(t, out[0].Models, 1, "默认目录、无映射账号和通配白名单均不应补入额外模型")
+			require.Len(t, out[0].Models, 1, "渠道价格目录、默认目录、无映射账号和通配白名单均不应补入额外模型")
 			require.Equal(t, tc.model, out[0].Models[0].Name)
+			require.NotNil(t, out[0].Models[0].Pricing, "账号已列出的模型仍须保留渠道价格")
 		})
 	}
 }
@@ -744,7 +746,7 @@ func TestListPlazaGroups_AccountCatalogHonorsAccountGroupLimits(t *testing.T) {
 	}
 }
 
-func TestListPlazaGroups_AccountGroupLimitsPreserveOtherAccountsAndChannels(t *testing.T) {
+func TestListPlazaGroups_AccountGroupLimitsPreserveOtherAccountsButNotChannelOnlyModels(t *testing.T) {
 	g := Group{ID: 10, Platform: PlatformAnthropic, ModelAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"claude-*", "channel-only"}}}
 	ch := plazaPricedChannel(1, "channel", []int64{10}, PlatformAnthropic, "channel-only")
 	svc := newPlazaService([]Channel{ch}, []Group{g}, nil)
@@ -767,9 +769,20 @@ func TestListPlazaGroups_AccountGroupLimitsPreserveOtherAccountsAndChannels(t *t
 	require.NoError(t, err)
 	require.Len(t, out, 1)
 	models := plazaModelsByName(out[0].Models)
-	require.Len(t, models, 3)
+	require.Len(t, models, 2)
 	require.Contains(t, models, "claude-haiku-4-5-20251001")
 	require.Contains(t, models, "claude-sonnet-4-6")
-	require.Contains(t, models, "channel-only")
+	require.NotContains(t, models, "channel-only")
 	require.NotContains(t, models, "claude-opus-4-8")
+}
+
+func TestListPlazaGroups_ChannelCatalogDoesNotReplaceMissingAccountModels(t *testing.T) {
+	for _, accounts := range [][]Account{nil, {{ID: 1, Platform: PlatformOpenAI}}} {
+		ch := plazaPricedChannel(1, "price catalog", []int64{10}, PlatformOpenAI, "gpt-6-astra")
+		svc := newPlazaService([]Channel{ch}, []Group{{ID: 10, Platform: PlatformOpenAI}}, nil)
+		svc.gatewayService = &GatewayService{accountRepo: &modelsListAccountRepoStub{byGroup: map[int64][]Account{10: accounts}}}
+		out, err := svc.ListGroups(context.Background())
+		require.NoError(t, err)
+		require.Empty(t, out, "没有明确账号模型的分组不能借渠道价格表扩展模型目录")
+	}
 }
