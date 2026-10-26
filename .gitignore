@@ -135,6 +135,8 @@ deploy/docker-compose.override.yml
 vite.config.js
 docs/*
 !docs/group-system-prompt.md
+!docs/typesafe-content-audit.md
+!docs/multi-host-session-owner.md
 !docs/security-penalties.md
 !docs/ip-risk-control.md
 !docs/docker-trusted-proxies.md

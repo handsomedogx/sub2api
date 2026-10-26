@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -36,6 +37,9 @@ type updateScheduledTestPlanRequest struct {
 	Enabled        *bool                      `json:"enabled"`
 	MaxResults     int                        `json:"max_results"`
 	AutoRecover    *bool                      `json:"auto_recover"`
+
+	// Configuration import must retain this target's penalty ownership.
+	PreserveQualityState bool `json:"preserve_quality_state"`
 }
 
 // ListByAccount GET /admin/accounts/:id/scheduled-test-plans
@@ -104,6 +108,7 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
+	existing.PreserveQualityState = req.PreserveQualityState
 
 	if req.PelicanConfig != nil {
 		if existing.PelicanConfig == nil {
@@ -141,6 +146,10 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 
 	updated, err := h.scheduledTestSvc.UpdatePlan(c.Request.Context(), existing)
 	if err != nil {
+		if infraerrors.Reason(err) == service.QualityScopeConflictReason {
+			response.ErrorFrom(c, err)
+			return
+		}
 		response.BadRequest(c, err.Error())
 		return
 	}
@@ -156,6 +165,10 @@ func (h *ScheduledTestHandler) Delete(c *gin.Context) {
 	}
 
 	if err := h.scheduledTestSvc.DeletePlan(c.Request.Context(), planID); err != nil {
+		if infraerrors.Reason(err) == service.QualityScopeConflictReason {
+			response.ErrorFrom(c, err)
+			return
+		}
 		response.InternalError(c, err.Error())
 		return
 	}

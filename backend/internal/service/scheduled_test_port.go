@@ -7,6 +7,8 @@ import (
 
 // PelicanTestConfig stores intelligence test inputs; a missing kind preserves legacy HTML plans.
 type PelicanTestConfig struct {
+	// Optional display name stored in the existing configuration JSON.
+	RuleName string `json:"rule_name,omitempty"`
 	// Filled only on saved result snapshots, never used to configure a rule.
 	QualityRestoreDiagnostic *QualityRestoreDiagnostic `json:"quality_restore_diagnostic,omitempty"`
 	QualityModelOutcomes     map[string]string         `json:"quality_model_outcomes,omitempty"`
@@ -30,6 +32,8 @@ type PelicanTestConfig struct {
 
 // ScheduledTestPlan represents a scheduled test plan domain model.
 type ScheduledTestPlan struct {
+	// Request-only: importing configuration preserves this target's ownership.
+	PreserveQualityState     bool                      `json:"-"`
 	QualityRestoreDiagnostic *QualityRestoreDiagnostic `json:"-"`
 	QualityModelActions      map[string]string         `json:"-"`
 	QualityModelOutcomes     map[string]string         `json:"-"`

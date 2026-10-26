@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -95,7 +94,9 @@ func (r *scheduledTestPlanRepository) Update(ctx context.Context, plan *service.
 	if err != nil {
 		return nil, err
 	}
-	if updated.PelicanConfig != nil && updated.PelicanConfig.Quality != nil &&
+	// Importing configuration cannot implicitly undo account restrictions or
+	// discard their ownership. Incompatible live isolation still rejects below.
+	if !plan.PreserveQualityState && updated.PelicanConfig != nil && updated.PelicanConfig.Quality != nil &&
 		updated.PelicanConfig.Quality.Action == service.QualityActionIsolateModels &&
 		(state.Action == "remove_groups" || state.Action == "disable_scheduling") {
 		if err = restoreQualityAccountActionForIsolation(ctx, tx, updated, &state); err != nil {
@@ -105,7 +106,7 @@ func (r *scheduledTestPlanRepository) Update(ctx context.Context, plan *service.
 	if err = checkQualityIsolationScope(updated, &state); err != nil {
 		return nil, err
 	}
-	if updated.PelicanConfig != nil && updated.PelicanConfig.Quality != nil && updated.PelicanConfig.Quality.Action == service.QualityActionObserveOnly {
+	if !plan.PreserveQualityState && updated.PelicanConfig != nil && updated.PelicanConfig.Quality != nil && updated.PelicanConfig.Quality.Action == service.QualityActionObserveOnly {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM account_quality_states WHERE plan_id=$1`, plan.ID); err != nil {
 			return nil, err
 		}
@@ -134,7 +135,7 @@ func (r *scheduledTestPlanRepository) Delete(ctx context.Context, id int64) erro
 		return err
 	}
 	if state.Action == service.QualityActionIsolateModels {
-		return fmt.Errorf("restore this rule's isolated models and groups before deleting it")
+		return service.QualityScopeConflict("restore this rule's isolated models and groups before deleting it")
 	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM scheduled_test_plans WHERE id=$1`, id); err != nil {
 		return err
