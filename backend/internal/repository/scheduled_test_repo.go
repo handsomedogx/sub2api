@@ -29,6 +29,9 @@ type planRowQuerier interface {
 
 // insertScheduledTestPlan is shared with group rules, which insert inside their own transaction.
 func insertScheduledTestPlan(ctx context.Context, q planRowQuerier, plan *service.ScheduledTestPlan) (*service.ScheduledTestPlan, error) {
+	if err := validateQualityGroupReferences(ctx, q, plan.PelicanConfig); err != nil {
+		return nil, err
+	}
 	row := q.QueryRowContext(ctx, `
 		INSERT INTO scheduled_test_plans (account_id, model_id, cron_expression, enabled, max_results, auto_recover, next_run_at, created_at, updated_at, pelican_config)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), $8)
@@ -106,6 +109,9 @@ func (r *scheduledTestPlanRepository) Update(ctx context.Context, plan *service.
 	if err = checkQualityIsolationScope(updated, &state); err != nil {
 		return nil, err
 	}
+	if err = validateQualityGroupReferences(ctx, tx, updated.PelicanConfig); err != nil {
+		return nil, err
+	}
 	if !plan.PreserveQualityState && updated.PelicanConfig != nil && updated.PelicanConfig.Quality != nil && updated.PelicanConfig.Quality.Action == service.QualityActionObserveOnly {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM account_quality_states WHERE plan_id=$1`, plan.ID); err != nil {
 			return nil, err
@@ -134,9 +140,29 @@ func (r *scheduledTestPlanRepository) Delete(ctx context.Context, id int64) erro
 	if err != nil {
 		return err
 	}
-	if state.Action == service.QualityActionIsolateModels {
+	if state.Action == service.QualityActionIsolateModels || state.Models != nil || state.Groups != nil {
 		return service.QualityScopeConflict("restore this rule's isolated models and groups before deleting it")
 	}
+	// Revalidate live ownership as well as durable snapshots. A stale/cleared
+	// snapshot must not let deletion leave a marker pointing at a missing rule.
+	var live []byte
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(extra->'quality_model_isolation','{}'::jsonb) FROM accounts WHERE id=(SELECT account_id FROM scheduled_test_plans WHERE id=$1) FOR UPDATE`, id).Scan(&live)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if len(live) > 0 {
+		var entries map[string]json.RawMessage
+		if json.Unmarshal(live, &entries) != nil {
+			return service.QualityScopeConflict("review unreadable model ownership before deleting this rule")
+		}
+		for _, raw := range entries {
+			owner, _ := qualityEntryOwner(raw, id)
+			if owner == "this_rule" {
+				return service.QualityScopeConflict("review remaining model ownership before deleting this rule")
+			}
+		}
+	}
+
 	if _, err = tx.ExecContext(ctx, `DELETE FROM scheduled_test_plans WHERE id=$1`, id); err != nil {
 		return err
 	}

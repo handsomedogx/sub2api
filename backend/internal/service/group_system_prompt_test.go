@@ -113,7 +113,7 @@ func TestApplyGroupSystemPromptPolicy_PassthroughKeepsBytes(t *testing.T) {
 func TestGroupSystemPromptAuthCacheRoundtrip(t *testing.T) {
 	key := &APIKey{
 		ID: 1, Key: "sk-prompt-cache", User: &User{ID: 2, Status: StatusActive},
-		Group: &Group{ID: 3, Hydrated: true, SystemPromptMode: "replace", SystemPrompt: "网关指令\nKeep whitespace.  "},
+		Group: &Group{ID: 3, Hydrated: true, SystemPromptMode: "replace", SystemPrompt: "网关指令\nKeep whitespace.  ", ImageCountBilling: true},
 	}
 	svc := &APIKeyService{}
 	encoded, err := json.Marshal(&APIKeyAuthCacheEntry{Snapshot: svc.snapshotFromAPIKey(context.Background(), key)})
@@ -125,11 +125,14 @@ func TestGroupSystemPromptAuthCacheRoundtrip(t *testing.T) {
 	require.True(t, used)
 	require.Equal(t, key.Group.SystemPromptMode, materialized.Group.SystemPromptMode)
 	require.Equal(t, key.Group.SystemPrompt, materialized.Group.SystemPrompt)
+	require.True(t, materialized.Group.ImageCountBilling)
 
-	cached.Snapshot.Version = 30 // Before group prompt fields were cached.
-	_, used, err = svc.applyAuthCacheEntry(key.Key, &cached)
-	require.NoError(t, err)
-	require.False(t, used)
+	for _, version := range []int{30, 31} {
+		cached.Snapshot.Version = version // Neither prior cache format included both policies.
+		_, used, err = svc.applyAuthCacheEntry(key.Key, &cached)
+		require.NoError(t, err)
+		require.False(t, used)
+	}
 }
 
 func TestGroupSystemPromptSimpleModeAndDuplicate(t *testing.T) {
