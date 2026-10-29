@@ -104,7 +104,7 @@ func (b *cancelCaptureBody) Close() error {
 	return nil
 }
 
-func TestCompletedCaptureLocalCloseDeletesSuccessfulBodies(t *testing.T) {
+func TestCompletedCaptureLocalCloseRetainsSuccessfulBodies(t *testing.T) {
 	for _, ct := range []string{"text/event-stream", ""} {
 		for _, large := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/large=%v", ct, large), func(t *testing.T) {
@@ -148,15 +148,18 @@ func TestCompletedCaptureLocalCloseDeletesSuccessfulBodies(t *testing.T) {
 				drain(t, m)
 				rows, err := m.Records(context.Background(), target.ID, "", false, 10, 0)
 				require.NoError(t, err)
-				require.Empty(t, rows)
-				require.Zero(t, m.Stats().UsedBytes)
+				require.Len(t, rows, 1)
+				require.False(t, rows[0].IsError)
+				require.Equal(t, "completed", rows[0].ClientOutcome)
+				require.Contains(t, partsText(t, m, rows[0]), "PRIVATE_SUCCESS")
+				require.Positive(t, m.Stats().UsedBytes)
 				store.mu.Lock()
-				require.Empty(t, store.records)
+				require.Len(t, store.records, 1)
 				store.mu.Unlock()
 				entries, err := os.ReadDir(filepath.Join(m.dir, target.ID))
 				if !os.IsNotExist(err) {
 					require.NoError(t, err)
-					require.Empty(t, entries)
+					require.Len(t, entries, 1)
 				}
 			})
 		}
@@ -326,5 +329,6 @@ func TestCaptureDoesNotRequireResponsesTerminalForOtherSSE(t *testing.T) {
 	drain(t, m)
 	rows, err := m.Records(context.Background(), target.ID, "", false, 10, 0)
 	require.NoError(t, err)
-	require.Empty(t, rows)
+	require.Len(t, rows, 1)
+	require.False(t, rows[0].IsError)
 }

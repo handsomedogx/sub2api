@@ -95,10 +95,10 @@ func TestCapture200LongStreams(t *testing.T) {
 	runtime.ReadMemStats(&after)
 	rows, err := m.Records(context.Background(), target.ID, "", false, 201, 0)
 	require.NoError(t, err)
-	require.Len(t, rows, 100)
+	t.Logf("stored_requests=%d stats=%+v", len(rows), m.Stats())
+	require.Equal(t, 200, len(rows))
 	for _, r := range rows {
-		require.True(t, r.IsError)
-		require.EqualValues(t, 1, r.GroupID)
+		require.Equal(t, r.GroupID == 1, r.IsError)
 	}
 	partial := 0
 	for _, r := range rows {

@@ -632,6 +632,12 @@ func (s *Session) snapshotLocked(r *Record) {
 	r.Meta = s.meta
 	r.Turn = s.turn
 	r.Status = s.status
+	// HTTP success is known only at the response boundary. WebSocket turns
+	// receive their completion marker from the terminal-frame barrier.
+	if s.done.Load() && s.meta.Protocol != "websocket" && s.status >= 200 && s.status < 400 {
+		now := time.Now().UTC()
+		r.FinishedAt = &now
+	}
 	r.IsError = s.status >= 400 || s.resultError
 	r.Attempts = append([]Attempt(nil), s.attempts...)
 	for _, a := range s.attempts {
@@ -771,7 +777,7 @@ func (m *Manager) process(e event) {
 		}
 		if r == nil {
 			r = &recordState{Record: Record{ID: uuid.NewString(), TaskID: target, InstanceID: m.instance, Turn: e.part.Turn, CreatedAt: time.Now().UTC()}, parts: map[string]*partState{}}
-			// Pending bodies have no queryable index. Publish only finalized errors.
+			// Pending bodies have no queryable index. Publish only finalized records.
 			e.s.records[key] = r
 		}
 		if r.blocked {
@@ -869,9 +875,10 @@ func (m *Manager) writePart(r *recordState, p *partState, data []byte) error {
 }
 func recordKey(task string, turn int) string { return fmt.Sprintf("%s:%d", task, turn) }
 
-// Only the worker finalizes records. Successful and unclassified payloads are
-// removed before processing subsequent events; they never receive a DB index.
+// Only the worker finalizes records. Retain completed requests and confirmed
+// errors; discard unclassified payloads when capture stops before completion.
 func (m *Manager) finishRecord(r *recordState, t *runtimeTask, snapshot *Record) {
+	retain := snapshot.IsError || snapshot.FinishedAt != nil
 	r.Meta, r.Turn = snapshot.Meta, snapshot.Turn
 	r.Status, r.IsError = snapshot.Status, snapshot.IsError
 	r.ClientOutcome = snapshot.ClientOutcome
@@ -886,7 +893,7 @@ func (m *Manager) finishRecord(r *recordState, t *runtimeTask, snapshot *Record)
 		}
 	}
 	for _, p := range r.parts {
-		if !p.ended && r.IsError {
+		if !p.ended && retain {
 			tail, reason := p.filter.End()
 			p.part.Omitted = reason
 			r.Partial = true
@@ -904,7 +911,7 @@ func (m *Manager) finishRecord(r *recordState, t *runtimeTask, snapshot *Record)
 		r.Parts = append(r.Parts, p.part)
 	}
 	sort.Slice(r.Parts, func(i, j int) bool { return r.Parts[i].Name < r.Parts[j].Name })
-	if !r.IsError {
+	if !retain {
 		if r.Partial {
 			m.mu.Lock()
 			t.task.Skipped++
@@ -976,7 +983,7 @@ func (m *Manager) finishTurn(s *Session, snapshot *Record, targets []string) {
 		}
 		key := recordKey(id, snapshot.Turn)
 		r := s.records[key]
-		if r == nil && snapshot.IsError {
+		if r == nil && (snapshot.IsError || snapshot.FinishedAt != nil) {
 			r = &recordState{Record: Record{ID: uuid.NewString(), TaskID: id, InstanceID: m.instance, CreatedAt: time.Now().UTC(), Partial: true, Reason: "no_payload_recorded"}, parts: map[string]*partState{}}
 		}
 		if r != nil {
@@ -1048,7 +1055,7 @@ func (m *Manager) finishTarget(s *Session, t *runtimeTask) {
 		m.finishRecord(r, t, snap)
 		delete(s.records, key)
 	}
-	if hit && !found && snapshot.IsError {
+	if hit && !found && (snapshot.IsError || snapshot.FinishedAt != nil) {
 		r := &recordState{Record: Record{ID: uuid.NewString(), TaskID: id, InstanceID: m.instance, CreatedAt: time.Now().UTC(), Partial: true, Reason: "no_payload_recorded"}, parts: map[string]*partState{}}
 		m.finishRecord(r, t, snapshot)
 	}

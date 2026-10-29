@@ -142,15 +142,26 @@ func TestWebSocketMultiTurnAndAccountSwitch(t *testing.T) {
 	drain(t, m)
 	records, err := m.Records(context.Background(), target.ID, "", false, 10, 0)
 	require.NoError(t, err)
-	require.Len(t, records, 1)
-	text := partsText(t, m, records[0])
+	require.Len(t, records, 2)
+	var first, second Record
+	for _, r := range records {
+		if r.Turn == 1 {
+			first = r
+		} else {
+			second = r
+		}
+	}
+	require.False(t, second.IsError)
+	require.Contains(t, partsText(t, m, second), "next")
+	require.NotContains(t, partsText(t, m, second), "MATCHED")
+	text := partsText(t, m, first)
 	require.NotContains(t, text, "OTHER_ACCOUNT")
 	require.Equal(t, 1, strings.Count(text, `"first"`))
 	require.NotContains(t, text, "second")
-	require.Len(t, records[0].Attempts, 2)
-	require.False(t, records[0].Partial, records[0].Reason)
+	require.Len(t, first.Attempts, 2)
+	require.False(t, first.Partial, first.Reason)
 	turns := map[int]bool{}
-	for _, p := range records[0].Parts {
+	for _, p := range first.Parts {
 		turns[p.Turn] = true
 	}
 	require.True(t, turns[1])
@@ -185,7 +196,12 @@ func TestLimitsAndDiskFailureDoNotAffectTraffic(t *testing.T) {
 			require.Eventually(t, func() bool { return m.Stats().ActiveRequests == 0 }, 5*time.Second, 10*time.Millisecond)
 			rows, err := m.Records(context.Background(), target.ID, "", false, 10, 0)
 			require.NoError(t, err)
-			require.Empty(t, rows)
+			// Capture may stop before the business completion reaches the worker.
+			require.LessOrEqual(t, len(rows), 1)
+			for _, row := range rows {
+				require.False(t, row.IsError)
+				require.True(t, row.Partial)
+			}
 		})
 	}
 }
@@ -322,8 +338,12 @@ func TestWebSocketCompletedTurnReleasesFrameBuffers(t *testing.T) {
 	drain(t, m)
 	rows, err := m.Records(context.Background(), target.ID, "", false, 10, 0)
 	require.NoError(t, err)
-	require.Empty(t, rows)
-	require.Zero(t, m.Stats().UsedBytes)
+	require.Len(t, rows, 8)
+	for _, row := range rows {
+		require.False(t, row.IsError)
+		require.False(t, row.Partial)
+	}
+	require.Positive(t, m.Stats().UsedBytes)
 }
 
 func TestFailedCaptureReleasesIdleBusinessConnection(t *testing.T) {

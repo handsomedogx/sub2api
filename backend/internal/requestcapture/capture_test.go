@@ -95,14 +95,14 @@ func (s *memoryStore) Record(_ context.Context, task, id string) (*Record, error
 	}
 	return &r, err
 }
-func (s *memoryStore) Records(_ context.Context, task, rid string, errorsOnly bool, limit, offset int) ([]Record, error) {
+func (s *memoryStore) Records(_ context.Context, task, rid string, errorsOnly, finalizedOnly bool, limit, offset int) ([]Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := []Record{}
 	for _, b := range s.records {
 		var r Record
 		_ = json.Unmarshal(b, &r)
-		if r.TaskID == task && (rid == "" || r.RequestID == rid) && (!errorsOnly || (r.IsError && r.FinishedAt != nil)) {
+		if r.TaskID == task && (rid == "" || r.RequestID == rid) && (!errorsOnly || r.IsError) && (!finalizedOnly || r.FinishedAt != nil) {
 			out = append(out, r)
 		}
 	}
@@ -384,6 +384,9 @@ func TestExportAndPermissions(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		if runtime.GOOS == "windows" {
+			return nil // Windows does not expose POSIX permission bits.
+		}
 		if d.IsDir() {
 			require.Equal(t, os.FileMode(0700), info.Mode().Perm(), p)
 		} else {
@@ -437,10 +440,9 @@ func TestCapture200Concurrent(t *testing.T) {
 	rs, err := m.Records(context.Background(), target.ID, "", false, 1000, 0)
 	require.NoError(t, err)
 	t.Logf("stored_requests=%d stats=%+v", len(rs), m.Stats())
-	require.Len(t, rs, 100)
+	require.Len(t, rs, 200)
 	for _, r := range rs {
-		require.True(t, r.IsError)
-		require.Zero(t, r.UserID%2)
+		require.Equal(t, r.UserID%2 == 0, r.IsError)
 	}
 	partial := 0
 	for _, r := range rs {

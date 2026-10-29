@@ -133,7 +133,8 @@ type Store interface {
 	Task(context.Context, string, string) (*Task, error)
 	Tasks(context.Context, string, int, int) ([]Task, error)
 	SaveRecord(context.Context, *Record) error
-	Records(context.Context, string, string, bool, int, int) ([]Record, error)
+	// Recovery reads raw metadata; public lists must set finalizedOnly.
+	Records(ctx context.Context, task, requestID string, onlyErrors, finalizedOnly bool, limit, offset int) ([]Record, error)
 	Record(context.Context, string, string) (*Record, error)
 	DeleteRecord(context.Context, string, string) error
 	DeleteTask(context.Context, string, string) error

@@ -25,13 +25,33 @@ describe('request capture page', () => {
   it('renders capture content as text and replaces preview pages', async () => {
     const wrapper = mount(View, options); await flushPromises()
     await wrapper.findAll('button').find(b => b.text().includes('#7'))!.trigger('click'); await flushPromises()
-    expect(mocks.listRecords).toHaveBeenLastCalledWith('task', 1, '', true)
-    expect(wrapper.findAll('input[type=checkbox]')).toHaveLength(1) // Only media remains configurable.
+    expect(mocks.listRecords).toHaveBeenLastCalledWith('task', 1, '', false)
+    expect(wrapper.findAll('input[type=checkbox]')).toHaveLength(2)
     await wrapper.findAll('button').find(b => b.text() === 'request-id')!.trigger('click'); await flushPromises()
     expect(wrapper.find('img').exists()).toBe(false); expect(wrapper.text()).toContain('<img src=x onerror=alert(1)>')
     mocks.getContent.mockResolvedValueOnce({ text: 'next page', next_offset: 19, has_more: false })
     await wrapper.findAll('button').find(b => b.text() === 'admin.requestCapture.nextSegment')!.trigger('click'); await flushPromises()
     expect(mocks.getContent).toHaveBeenLastCalledWith('task', 'record', '1-client_request.txt', 10); expect(wrapper.text()).not.toContain('<img src=x'); expect(wrapper.text()).toContain('next page'); wrapper.unmount()
+  })
+  it('can filter errors and return to all records', async () => {
+    const wrapper = mount(View, options); await flushPromises()
+    await wrapper.findAll('button').find(b => b.text().includes('#7'))!.trigger('click'); await flushPromises()
+    expect(mocks.listRecords).toHaveBeenLastCalledWith('task', 1, '', false)
+    const filter = wrapper.findAll('input[type=checkbox]')[1]!
+    await filter.setValue(true); await flushPromises()
+    expect(mocks.listRecords).toHaveBeenLastCalledWith('task', 1, '', true)
+    await filter.setValue(false); await flushPromises()
+    expect(mocks.listRecords).toHaveBeenLastCalledWith('task', 1, '', false)
+    wrapper.unmount()
+  })
+  it.each([
+    [200], [101],
+  ])('labels successful captures with HTTP %i', async (status) => {
+    mocks.listRecords.mockResolvedValue({ items: [{ ...record, status, is_error: false, client_outcome: 'completed' }], has_more: false })
+    const wrapper = mount(View, options); await flushPromises()
+    await wrapper.findAll('button').find(b => b.text().includes('#7'))!.trigger('click'); await flushPromises()
+    expect(wrapper.get('[data-testid="capture-outcome"]').text()).toBe('admin.requestCapture.successful')
+    wrapper.unmount()
   })
   it.each([
     ['failed', 'basispoints_stream_incomplete', 'streamFailed'],

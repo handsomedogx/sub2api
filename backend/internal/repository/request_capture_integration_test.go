@@ -44,33 +44,38 @@ func TestRequestCaptureSQLLifecycle(t *testing.T) {
 	require.False(t, strings.Contains(metadata, "DO-NOT-PERSIST"))
 	_, err = store.Task(ctx, "another-instance", task.ID)
 	require.Error(t, err)
-	// Successful traffic must leave no raw SQL index, including when queried
-	// without the manager's mandatory error-only policy.
+	// Completed successes are indexed, readable and excluded by the error filter.
 	success := m.Begin(requestcapture.Meta{UserID: 1, RequestID: "successful-request"})
 	require.NotNil(t, success)
-	success.ClientRequest([]byte("{\"input\":\"SUCCESS_MUST_DISAPPEAR\"}"), "application/json", nil)
+	success.ClientRequest([]byte("{\"input\":\"SUCCESS_IS_RETAINED\"}"), "application/json", nil)
 	success.Finish(200)
 	require.Eventually(t, func() bool { return m.Stats().ActiveRequests == 0 }, 5*time.Second, time.Millisecond)
-	raw, err := store.Records(ctx, task.ID, "successful-request", false, 10, 0)
+	raw, err := store.Records(ctx, task.ID, "successful-request", false, true, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, raw, 1)
+	require.False(t, raw[0].IsError)
+	saved, err := m.Record(ctx, task.ID, raw[0].ID)
+	require.NoError(t, err)
+	text, _, _, err = m.Preview(ctx, task.ID, saved.ID, saved.Parts[0].Name, 0)
+	require.NoError(t, err)
+	require.Contains(t, text, "SUCCESS_IS_RETAINED")
+	raw, err = m.Records(ctx, task.ID, "successful-request", true, 10, 0)
 	require.NoError(t, err)
 	require.Empty(t, raw)
-	// Old success rows and unfinalized error rows are hidden by the SQL predicate.
+	// Unfinalized rows stay hidden regardless of their error flag.
 	now := time.Now().UTC()
 	for _, pending := range []bool{false, true} {
-		hidden := &requestcapture.Record{ID: uuid.NewString(), TaskID: task.ID, InstanceID: m.InstanceID(), CreatedAt: now, FinishedAt: &now, IsError: pending}
-		if pending {
-			hidden.FinishedAt = nil
-		}
+		hidden := &requestcapture.Record{ID: uuid.NewString(), TaskID: task.ID, InstanceID: m.InstanceID(), CreatedAt: now, IsError: pending}
 		require.NoError(t, store.SaveRecord(ctx, hidden))
 		visible, err := m.Records(ctx, task.ID, "", false, 10, 0)
 		require.NoError(t, err)
-		require.Len(t, visible, 1)
+		require.Len(t, visible, 2)
 		_, err = m.Record(ctx, task.ID, hidden.ID)
 		require.ErrorIs(t, err, requestcapture.ErrNotFound)
 		require.NoError(t, store.DeleteRecord(ctx, task.ID, hidden.ID))
 	}
 	require.NoError(t, m.Delete(ctx, task.ID))
-	rows, err = store.Records(ctx, task.ID, "", false, 10, 0)
+	rows, err = store.Records(ctx, task.ID, "", false, false, 10, 0)
 	require.NoError(t, err)
 	require.Empty(t, rows)
 	require.Zero(t, m.Stats().UsedBytes)

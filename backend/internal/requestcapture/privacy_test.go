@@ -1,9 +1,12 @@
 package requestcapture
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSuccessfulCaptureNeverPublishedAndDeletedAtCompletion(t *testing.T) {
+func TestSuccessfulCapturePublishedOnlyAtCompletion(t *testing.T) {
 	m, store := testManager(t)
 	target := task(t, m, "user", 1, true)
 	s := m.Begin(Meta{UserID: 1, RequestID: "success"})
@@ -36,17 +39,52 @@ func TestSuccessfulCaptureNeverPublishedAndDeletedAtCompletion(t *testing.T) {
 	require.Error(t, err)
 	s.Finish(200)
 	drain(t, m)
-	require.Zero(t, m.Stats().UsedBytes)
+	require.Positive(t, m.Stats().UsedBytes)
 	_, err = os.Stat(filepath.Join(m.dir, target.ID, id))
-	require.True(t, os.IsNotExist(err))
+	require.NoError(t, err)
+	r, err := m.Record(context.Background(), target.ID, id)
+	require.NoError(t, err)
+	require.False(t, r.IsError)
+	require.Equal(t, 200, r.Status)
+	require.NotNil(t, r.FinishedAt)
+	require.Contains(t, partsText(t, m, *r), "PRIVATE_SUCCESS")
+	require.Contains(t, partsText(t, m, *r), "PRIVATE_MEDIA")
+	rows, err = m.Records(context.Background(), target.ID, "success", false, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	rows, err = m.Records(context.Background(), target.ID, "success", true, 10, 0)
+	require.NoError(t, err)
+	require.Empty(t, rows)
 	v, err := m.Task(context.Background(), target.ID)
 	require.NoError(t, err)
-	require.Zero(t, v.Requests)
-	require.Zero(t, v.Bytes)
+	require.EqualValues(t, 1, v.Requests)
+	require.Equal(t, r.Bytes, v.Bytes)
 	require.Zero(t, v.Partial)
 	store.mu.Lock()
-	require.Empty(t, store.records)
+	require.Len(t, store.records, 1)
 	store.mu.Unlock()
+	require.NoError(t, m.Stop(context.Background(), target.ID))
+	for _, recordID := range []string{id, ""} {
+		var archive bytes.Buffer
+		require.NoError(t, m.Export(context.Background(), &archive, target.ID, recordID))
+		gz, err := gzip.NewReader(&archive)
+		require.NoError(t, err)
+		tr := tar.NewReader(gz)
+		files := map[string]string{}
+		for {
+			header, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			data, err := io.ReadAll(tr)
+			require.NoError(t, err)
+			files[header.Name] = string(data)
+		}
+		require.NoError(t, gz.Close())
+		require.Contains(t, files[id+"/record.json"], `"is_error": false`)
+		require.Contains(t, files[id+"/"+r.Parts[0].Name], "PRIVATE_SUCCESS")
+	}
 }
 
 func TestErrorRetentionClassifiesBusinessFailuresOnly(t *testing.T) {
@@ -90,13 +128,15 @@ func TestErrorRetentionClassifiesBusinessFailuresOnly(t *testing.T) {
 			drain(t, m)
 			rows, err := m.Records(context.Background(), target.ID, "", false, 10, 0)
 			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			require.Equal(t, tc.want, rows[0].IsError)
+			require.NotNil(t, rows[0].FinishedAt)
+			rows, err = m.Records(context.Background(), target.ID, "", true, 10, 0)
+			require.NoError(t, err)
 			if tc.want {
 				require.Len(t, rows, 1)
-				require.True(t, rows[0].IsError)
-				require.NotNil(t, rows[0].FinishedAt)
 			} else {
 				require.Empty(t, rows)
-				require.Zero(t, m.Stats().UsedBytes)
 			}
 		})
 	}
@@ -155,8 +195,24 @@ func TestWebSocketSuccessErrorSuccessIsolatedBeforeDisconnect(t *testing.T) {
 			}
 			m.storageMu.Unlock()
 			require.Eventually(t, func() bool { return s.pending.Load() == 0 }, 5*time.Second, time.Millisecond)
-			require.Equal(t, 1, m.Stats().ActiveRequests) // No disconnect is necessary for deletion.
+			require.Equal(t, 1, m.Stats().ActiveRequests) // Turns are published before disconnect.
 			rows, err := m.Records(context.Background(), target.ID, "", false, 10, 0)
+			require.NoError(t, err)
+			require.Len(t, rows, 3)
+			var totalBytes int64
+			for _, row := range rows {
+				require.Equal(t, row.Turn == failTurn, row.IsError)
+				body := partsText(t, m, row)
+				for turn := 1; turn <= 3; turn++ {
+					if turn == row.Turn {
+						require.Contains(t, body, fmt.Sprintf("PRIVATE_TURN_%d", turn))
+					} else {
+						require.NotContains(t, body, fmt.Sprintf("PRIVATE_TURN_%d", turn))
+					}
+				}
+				totalBytes += row.Bytes
+			}
+			rows, err = m.Records(context.Background(), target.ID, "", true, 10, 0)
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
 			r := rows[0]
@@ -174,23 +230,23 @@ func TestWebSocketSuccessErrorSuccessIsolatedBeforeDisconnect(t *testing.T) {
 			}
 			dirs, err := os.ReadDir(filepath.Join(m.dir, target.ID))
 			require.NoError(t, err)
-			require.Len(t, dirs, 1)
-			require.Equal(t, r.Bytes, m.Stats().UsedBytes)
+			require.Len(t, dirs, 3)
+			require.Equal(t, totalBytes, m.Stats().UsedBytes)
 			s.Finish(http.StatusSwitchingProtocols)
 			drain(t, m)
 			rows, err = m.Records(context.Background(), target.ID, "", false, 10, 0)
 			require.NoError(t, err)
-			require.Len(t, rows, 1)
+			require.Len(t, rows, 3)
 		})
 	}
 }
 
-func TestLegacyAndPendingRecordsCannotBeReadOrExported(t *testing.T) {
+func TestPendingRecordsCannotBeReadOrExported(t *testing.T) {
 	m, store := testManager(t)
 	target := task(t, m, "user", 1, false)
 	now := time.Now().UTC()
 	for _, r := range []Record{
-		{ID: uuid.NewString(), TaskID: target.ID, InstanceID: m.instance, CreatedAt: now, FinishedAt: &now},
+		{ID: uuid.NewString(), TaskID: target.ID, InstanceID: m.instance, CreatedAt: now},
 		{ID: uuid.NewString(), TaskID: target.ID, InstanceID: m.instance, CreatedAt: now, IsError: true},
 	} {
 		require.NoError(t, store.SaveRecord(context.Background(), &r))
@@ -203,7 +259,7 @@ func TestLegacyAndPendingRecordsCannotBeReadOrExported(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, rows)
 	require.NoError(t, m.Stop(context.Background(), target.ID))
-	all, err := store.Records(context.Background(), target.ID, "", false, 10, 0)
+	all, err := store.Records(context.Background(), target.ID, "", false, false, 10, 0)
 	require.NoError(t, err)
 	for _, r := range all {
 		var denied bytes.Buffer
@@ -214,7 +270,7 @@ func TestLegacyAndPendingRecordsCannotBeReadOrExported(t *testing.T) {
 	require.NoError(t, m.Export(context.Background(), &archive, target.ID, ""))
 }
 
-func TestRestartPurgesSuccessPendingAndOrphanBodiesAcrossPages(t *testing.T) {
+func TestRestartRetainsSuccessAndPurgesPendingAndOrphanBodiesAcrossPages(t *testing.T) {
 	store := newMemoryStore()
 	dir := t.TempDir()
 	m, err := New(store, dir, Config{true, 1024, 7})
@@ -223,7 +279,7 @@ func TestRestartPurgesSuccessPendingAndOrphanBodiesAcrossPages(t *testing.T) {
 	instance := m.instance
 	m.Close()
 	now := time.Now().UTC()
-	// More than one page, mixed with retained errors, to detect deletion/offset skips.
+	// More than one page, mixed with retained successes and errors, to detect offset skips.
 	for i := 0; i < 210; i++ {
 		r := Record{ID: uuid.NewString(), TaskID: target.ID, InstanceID: instance, CreatedAt: now.Add(time.Duration(i)), FinishedAt: &now, IsError: i%3 == 0, Bytes: 7}
 		if i%3 == 1 {
@@ -241,16 +297,29 @@ func TestRestartPurgesSuccessPendingAndOrphanBodiesAcrossPages(t *testing.T) {
 	m, err = New(store, dir, Config{false, 1024, 7})
 	require.NoError(t, err)
 	defer m.Close()
-	rows, err := store.Records(context.Background(), target.ID, "", false, 300, 0)
+	rows, err := store.Records(context.Background(), target.ID, "", false, false, 300, 0)
 	require.NoError(t, err)
-	require.Len(t, rows, 70)
+	require.Len(t, rows, 140)
+	var successes int
+	for _, r := range rows {
+		require.NotNil(t, r.FinishedAt)
+		_, err := m.Record(context.Background(), target.ID, r.ID)
+		require.NoError(t, err)
+		body, err := os.ReadFile(filepath.Join(dir, target.ID, r.ID, "body.txt"))
+		require.NoError(t, err)
+		require.Equal(t, "private", string(body))
+		if !r.IsError {
+			successes++
+		}
+	}
+	require.Equal(t, 70, successes)
 	dirs, err := os.ReadDir(filepath.Join(dir, target.ID))
 	require.NoError(t, err)
-	require.Len(t, dirs, 70)
-	require.EqualValues(t, 70*7, m.Stats().UsedBytes)
+	require.Len(t, dirs, 140)
+	require.EqualValues(t, 140*7, m.Stats().UsedBytes)
 	v, err := m.Task(context.Background(), target.ID)
 	require.NoError(t, err)
-	require.EqualValues(t, 70, v.Requests)
+	require.EqualValues(t, 140, v.Requests)
 	require.Equal(t, m.Stats().UsedBytes, v.Bytes)
 }
 
@@ -281,7 +350,7 @@ func TestGracefulShutdownDiscardsUnclassifiedBody(t *testing.T) {
 	s.ClientRequest([]byte("{\"input\":\"pending body\"}"), "application/json", nil)
 	require.Eventually(t, func() bool { return m.Stats().UsedBytes > 0 }, time.Second, time.Millisecond)
 	m.Close()
-	rows, err := store.Records(context.Background(), target.ID, "", false, 10, 0)
+	rows, err := store.Records(context.Background(), target.ID, "", false, false, 10, 0)
 	require.NoError(t, err)
 	require.Empty(t, rows)
 	require.Zero(t, m.Stats().UsedBytes)
