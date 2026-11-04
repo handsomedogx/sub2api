@@ -7,6 +7,7 @@ import (
 	"time"
 
 	coderws "github.com/coder/websocket"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -27,9 +28,21 @@ func TestGroupSystemPromptWebSocketEveryTurn(t *testing.T) {
 					svc.openaiWSPool = pool
 				}
 				finishedTurns := make(chan int, 2)
+				want := "client"
+				if mode == "inject" {
+					want = "gateway\n\nclient"
+				} else if mode == "replace" {
+					want = "gateway"
+				}
 				hooks := &OpenAIWSIngressHooks{
 					RewriteRequest: func(_ int, body []byte) ([]byte, error) {
 						return ApplyGroupSystemPromptPolicy(body, &Group{SystemPromptMode: mode, SystemPrompt: "gateway"}, GroupSystemPromptProtocolResponses)
+					},
+					BeforeRequestWithClientPayload: func(_ int, payload, clientPayload []byte, _ string) error {
+						assert.Equal(t, "client", gjson.GetBytes(clientPayload, "instructions").String())
+						assert.Equal(t, want, gjson.GetBytes(payload, "instructions").String())
+						assert.Equal(t, "developer", gjson.GetBytes(clientPayload, "input.0.content").String())
+						return nil
 					},
 					AfterTurn: func(turn int, _ *OpenAIForwardResult, _ error) { finishedTurns <- turn },
 				}
@@ -43,11 +56,7 @@ func TestGroupSystemPromptWebSocketEveryTurn(t *testing.T) {
 						require.NoError(t, client.Write(context.Background(), coderws.MessageText, []byte(request)))
 					}
 					body := requirePassthroughUpstreamWrite(t, upstream, time.Second)
-					want := "client"
-					if mode == "inject" {
-						want = "gateway\n\nclient"
-					} else if mode == "replace" {
-						want = "gateway"
+					if mode == "replace" {
 						require.Equal(t, "user", gjson.GetBytes(body, "input.0.role").String())
 					}
 					require.Equal(t, want, gjson.GetBytes(body, "instructions").String())

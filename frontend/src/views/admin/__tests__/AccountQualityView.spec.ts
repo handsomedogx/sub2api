@@ -48,6 +48,52 @@ describe('quality operations', () => {
     pelican_config: { question_kind: 'state_probe', test_channel: 'account', prompt: '', reasoning_effort: 'high', parallel_count: 1,
       quality: { action: 'observe_only', expected_answer: '', remove_group_ids: [], auto_restore: false } }, created_at: '', updated_at: '' })
 
+  it.each([',', '，'])('preserves typed %s delimiters and saves distinct cooldown targets', async separator => {
+    const plan = rules()[0]
+    plan.pelican_config!.quality!.action = 'remove_models'
+    plan.pelican_config!.quality!.remove_models = ['gpt-6.1-sol']
+    vi.mocked(listQualityPlans).mockResolvedValue([plan])
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.get('[data-plan-id="1"] .rule-actions button:nth-child(2)').trigger('click'); await flushPromises()
+    const input = wrapper.get<HTMLInputElement>('[data-testid="quality-remove-models-input"]')
+    expect(input.element.value).toBe('gpt-6.1-sol')
+    const targets = ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra', 'gpt-5.6-terra', 'gpt-6-luna', 'gpt-5.6-sol']
+    // Use the rendered value for each successive keystroke: the old handler
+    // erased a comma before the next model could be entered.
+    const suffix = separator + ' ' + targets.slice(1).join(separator + ' ')
+    let expected = input.element.value
+    for (const character of suffix) {
+      expected += character
+      await input.setValue(input.element.value + character)
+      expect(input.element.value).toBe(expected)
+    }
+    await input.setValue(expected + separator + ' gpt-6.1-sol' + separator)
+    expect(input.element.value.endsWith(separator)).toBe(true)
+    await input.setValue(input.element.value.replace('gpt-6-astra', ' gpt-6-astra '))
+    await wrapper.get('#quality-rule-form').trigger('submit'); await flushPromises()
+    expect(scheduledTests.update).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(scheduledTests.update).mock.calls[0][1].pelican_config!.quality!.remove_models).toEqual(targets)
+    wrapper.unmount()
+  })
+
+  it('tracks raw delimiter edits as unsaved and resets the input when reopening a rule', async () => {
+    const plan = rules()[0]
+    plan.pelican_config!.quality!.action = 'remove_models'
+    plan.pelican_config!.quality!.remove_models = ['gpt-6.1-sol', 'gpt-6-astra']
+    vi.mocked(listQualityPlans).mockResolvedValue([plan])
+    const wrapper = mountView(); await flushPromises()
+    const vm = wrapper.vm as any
+    vm.edit(plan); await flushPromises()
+    const input = wrapper.get<HTMLInputElement>('[data-testid="quality-remove-models-input"]')
+    await input.setValue(input.element.value + ',')
+    vm.closeForm(); await flushPromises()
+    expect(vm.discardPrompt).toBe(true)
+    vm.edit(plan); await flushPromises()
+    expect(vm.removeModelsInput).toBe('gpt-6.1-sol, gpt-6-astra')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="quality-remove-models-input"]').element.value).toBe('gpt-6.1-sol, gpt-6-astra')
+    wrapper.unmount()
+  })
+
   const reuseCases = (['new', 'edit', 'bulk'] as const).flatMap(mode => (['preset', 'account'] as const).map(origin => ({ mode, origin })))
   async function openReuseCase({ mode, origin }: typeof reuseCases[number]) {
     const targets = rules()
@@ -1491,6 +1537,19 @@ describe('quality operations', () => {
     await vm.save(); expect(vm.selectedAccounts).toEqual([2]); expect(vm.showForm).toBe(true)
     await vm.save()
     expect(vi.mocked(scheduledTests.create).mock.calls.map(([request]) => request.account_id)).toEqual([1, 2, 2])
+    wrapper.unmount()
+  })
+  it.each([false, true])('keeps wrong answers separate from missing shared controls (legacy=%s)', async legacy => {
+    const batch = { id: 'synthetic-batch', started_at: '2026-01-01T00:00:00Z', start_deadline: '2026-01-01T00:02:00Z', closes_at: '2026-01-01T00:12:00Z', decision: 'no_passing_peer', peer_accounts: 2, peer_passed: 0, peer_failed: 2, peer_inconclusive: 0, comparison_key: 'synthetic', route: 'synthetic', mapped_model: 'test-model' }
+    const cfg = { question_kind: 'random_reasoning', model_id: 'test-model', prompt: 'Synthetic question', reasoning_effort: 'medium', parallel_count: 1, random_question: {id: 'synthetic', family: 'paths', version: 'fixture'}, quality: { action: 'disable_scheduling', expected_answer: '42', auto_restore: false, remove_group_ids: [] }, quality_batch: legacy ? undefined : batch }
+    const operation = { id: 101, plan_id: 4, account_id: 1, account_name: 'Synthetic account', status: 'failed', error_message: 'answer_mismatch', quality_action: 'inconclusive', passed_count: 0, total_count: 1, result_ids: [101], pelican_config: cfg }
+    vi.mocked(listQualityOperations).mockResolvedValueOnce({ items: [operation] as any, next_cursor: 0 })
+    vi.mocked(scheduledTests.getResult).mockResolvedValue({ ...operation, response_text: '41', quality_judgment: {verdict: 'incorrect', reason: 'Different answer'} } as any)
+    const wrapper = mountView(); await flushPromises()
+    await (wrapper.vm as any).operationDetails(operation); await flushPromises()
+    expect(wrapper.get('[data-testid="quality-result-badge"]').text()).toBe('qualityOps.wrongAnswer')
+    expect(wrapper.get('[data-testid="quality-batch-evidence"]').text()).toContain(legacy ? 'qualityOps.batchLegacy' : 'qualityOps.batchDecisions.no_passing_peer')
+    expect(wrapper.text()).not.toContain('qualityOps.outcomes.groups_removed')
     wrapper.unmount()
   })
   it('shows one operation row per round and loads response bodies only on demand', async () => {

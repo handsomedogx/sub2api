@@ -65,7 +65,7 @@ export default {
   "modelRestored": "Model restored",
   "modelUnchanged": "Current state retained",
 
-  "cooldownPerModelHint": "Each model is cooled or restored using its own test verdict. Passing peers stay available; untested or unsupported models receive no new cooldown. A 5xx lowers account concurrency first, then test verdicts determine model cooldowns.",
+  "cooldownPerModelHint": "Account state probes cool or restore all configured targets together. Other tests cool or restore each model using its own test verdict. Passing peers stay available; untested or unsupported models receive no new cooldown. A 5xx lowers account concurrency first, then test verdicts determine model cooldowns.",
 
   "skipped": "Skipped",
   "modelUnsupportedSkipped": "Unsupported model · skipped",
@@ -80,7 +80,7 @@ export default {
   "cooldownNotRecorded": "Not available in older records",
   "cooldownUnconfirmed": "Action result unconfirmed",
   "cooldownTargets": "Models eligible for cooldown",
-  "cooldownTargetsHint": "Only models with adverse test results are cooled. Untested and skipped models receive no new cooldown.",
+  "cooldownTargetsHint": "Account state probes apply their verdict to all configured targets. Other tests cool only models with adverse results; untested and skipped models receive no new cooldown.",
   "catalogUnavailable": "Model list unavailable · skipped",
 
   "tooManyModelSamples": "Select up to 50 models and 100 samples per round. Reduce the model count or samples per model.",
@@ -175,7 +175,21 @@ export default {
   "questionKind": "Test method",
   "questionCandy": "Candy question (model answer + grading model)",
   "questionRandom": "Random reasoning (generated question + grading model)",
-  "randomHint": "Fresh questions and local reference answers are generated for every round. No question or answer entry is needed. Batches alternate path counting and weighted XOR; all models receive the same question set. View actual questions in test history. Results are quality indicators only.",
+  "randomHint": "Accounts in one batch share fresh questions. Compare the same model, effort, channel and grading policy within a two-minute start window. A wrong answer can trigger quality actions only when another account passes that question. All-wrong or insufficient controls are recorded without new restrictions.",
+  "sharedBatch": "Shared question batch",
+  "batchCondition": "Conditions: {model} → {mapped} · effort {effort} · path {route}",
+  "batchNoControl": "No passing peer; no quality action",
+  "batchPeers": "Other eligible accounts: {total}; passed: {passed}, incorrect: {failed}, inconclusive: {unknown}.",
+  "batchWindow": "Start window: {from} – {to}. Controls use the same model, effort, channel and grading policy.",
+  "batchLegacy": "This older record has no cross-account shared-question control, so it cannot separate question difficulty from account quality.",
+  "batchDecisions": {
+    "inconclusive": "The request, grading or model availability is inconclusive; this result does not establish account quality.",
+    "pending": "Collecting batch answers; no quality action has been applied.",
+    "passed": "Question passed. Restoration still follows rule ownership and automatic-restoration settings.",
+    "peer_passed": "Another account passed this question; this incorrect answer can support a quality action.",
+    "no_passing_peer": "No eligible passing peer; this result is not account-degradation evidence.",
+    "outside_window": "The start or completion time falls outside this batch; no quality action is supported.",
+  },
   "generatedQuestion": "Generated question",
   "questionStateProbe": "State probe (full capability or degraded in seconds, no grading model)",
   "probeHint": "No question is sent. Each round runs one ticket probe: full capability passes, degraded counts as a wrong answer and triggers the action below, and inconclusive runs (network, rate limits, account errors) never change the account. OpenAI subscription (OAuth) accounts only; one probe per round.",
@@ -194,6 +208,8 @@ export default {
   "removeGroups": "Remove selected group memberships",
   "removeModels": "Keep scheduling, cool down selected models",
   "removeModelsInput": "Models to cool down (comma separated)",
+  "waitingForRecovery": "Awaiting quality recovery",
+  "cooldownRecoveryHint": "Quality cooldown remains until a later check explicitly passes with automatic recovery enabled, or an administrator clears it. The next check time, timeouts, rate limits and skipped checks do not release it.",
   "recoveryConcurrency": "OAuth recovery concurrency cap (default 5)",
   "invalidRecoveryConcurrency": "Recovery concurrency must be an integer from 1 to 10000",
   "selectModels": "Enter at least one model",
@@ -230,6 +246,7 @@ export default {
   "queued": "Queued for testing, expected to start within one minute.",
   "deleteConfirm": "Model isolation requires ownership review, explicit restoration and pausing before deletion. Delete this rule and its history? Removed memberships, disabled scheduling or BPS enabled by this rule will not be restored. Resolve them on the Accounts page first.",
   "outcomes": {
+    "comparison_pending": "Awaiting shared controls",
     "models_isolated": "Degraded models isolated; groups retained",
     "groups_restored_models_isolated": "Original groups restored; other models remain isolated",
 
@@ -380,6 +397,7 @@ export default {
   "discard": "Discard changes",
   "disableSchedulingShort": "Disable scheduling, keep groups",
   "actionHelp": {
+    "comparison_pending": "The original answer is saved. Compare completed batch results before applying quality actions.",
     "models_isolated": "Only models with confirmed wrong answers are isolated. Healthy models remain available. Isolation is removed by a passing retest, never by a timer.",
     "groups_restored_models_isolated": "At least one model passed its retest, restoring this rule’s original groups. Other degraded models remain isolated.",
 

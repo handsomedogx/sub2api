@@ -65,7 +65,7 @@ export default {
   "modelRestored": "已恢复该模型",
   "modelUnchanged": "保持当前状态",
 
-  "cooldownPerModelHint": "冷却与恢复按每个模型自己的检测结果处理：仅冷却检测失败的模型；通过的模型不受其他模型影响，未检测或不支持的模型不新增冷却。5xx 先降低账号并发，等待检测结果后决定模型冷却。",
+  "cooldownPerModelHint": "账号状态探针的结论统一用于全部配置目标的冷却与恢复；其他检测按每个模型自己的检测结果处理：仅冷却检测失败的模型；通过的模型不受其他模型影响，未检测或不支持的模型不新增冷却。5xx 先降低账号并发，等待检测结果后决定模型冷却。",
 
   "skipped": "已跳过",
   "modelUnsupportedSkipped": "账号不支持，已跳过",
@@ -80,7 +80,7 @@ export default {
   "cooldownNotRecorded": "旧记录未提供",
   "cooldownUnconfirmed": "处理结果未确认",
   "cooldownTargets": "冷却适用模型",
-  "cooldownTargetsHint": "仅检测异常的模型会被冷却；未检测或跳过的模型不新增冷却。",
+  "cooldownTargetsHint": "账号状态探针的结论统一用于全部配置目标；其他检测仅冷却检测异常的模型，未检测或跳过的模型不新增冷却。",
   "catalogUnavailable": "模型列表读取失败，已跳过",
 
   "tooManyModelSamples": "最多选择 50 个模型，每轮最多 100 个样本；请减少模型或每模型并行数。",
@@ -175,7 +175,21 @@ export default {
   "questionKind": "检测方式",
   "questionCandy": "糖果题（模型答题 + 判题模型打分）",
   "questionRandom": "随机推理题（现场出题 + 模型判题）",
-  "randomHint": "每轮生成新题并在本地计算参考答案，无需填写题目或答案。批量测试轮换路径计数和加权异或，同一轮各模型使用同一组题。实际题目可在检测记录中查看；答题表现仅作质量参考。",
+  "randomHint": "同批账号共享随机题，在两分钟启动窗口内按相同模型、思考强度、通道和判题配置对照。路径计数与加权异或轮换；只有其他账号同题明确通过，答错才可触发质量处置。全部答错或没有有效通过对照时，只记录结果。",
+  "sharedBatch": "同批同题对照",
+  "batchCondition": "检测条件：{model} → {mapped} · 思考强度 {effort} · 路径 {route}",
+  "batchNoControl": "同题缺少通过对照，未执行处置",
+  "batchPeers": "其他有效对照账号 {total} 个：通过 {passed}、答错 {failed}、不确定 {unknown}。",
+  "batchWindow": "启动窗口：{from} – {to}。只比较相同模型、思考强度、通道和判题配置。",
+  "batchLegacy": "旧记录未保存跨账号同题对照，不能据此区分题目难度与账号质量。",
+  "batchDecisions": {
+    "inconclusive": "请求、判题或模型可用性不确定，本次没有明确的质量结论。",
+    "pending": "等待批次收集完成，尚未执行质量处置。",
+    "passed": "本题通过；恢复仍遵守本规则的所有权与自动恢复设置。",
+    "peer_passed": "其他账号同题通过，本次明确答错可进入质量处置。",
+    "no_passing_peer": "同题缺少有效通过对照，本次结果不作为账号降智依据。",
+    "outside_window": "启动或完成时间超出批次窗口，本次结果不作为质量处置依据。",
+  },
   "generatedQuestion": "本次生成的题目",
   "questionStateProbe": "状态探针（几秒判满血 / 降智，不需要判题模型）",
   "probeHint": "不发题目：每轮跑一发门票探针，满血算通过、降智算答错并执行下面的处理，无法判断（网络、限流、账号异常等）不动账号。只适用于 OpenAI 订阅（OAuth）账号；每轮固定跑 1 次。",
@@ -194,6 +208,8 @@ export default {
   "removeGroups": "移出指定分组（取消账户的分组勾选）",
   "removeModels": "保持调度，仅冷却指定模型",
   "removeModelsInput": "要冷却的模型（逗号分隔）",
+  "waitingForRecovery": "等待质量恢复",
+  "cooldownRecoveryHint": "质量冷却会保持到后续检测明确通过并允许自动恢复，或由管理员手动解除；到达下次检测时间、超时、限流或跳过不会自动放行。",
   "recoveryConcurrency": "OAuth 恢复并发上限（默认 5）",
   "invalidRecoveryConcurrency": "恢复并发必须是 1 到 10000 的整数",
   "selectModels": "请填写至少一个模型",
@@ -230,6 +246,7 @@ export default {
   "queued": "已加入检测队列，预计一分钟内开始。",
   "deleteConfirm": "删除此规则及检测记录？模型隔离规则须先审查归属、明确确认恢复并暂停，再删除。其他策略的分组、调度和 BPS 不会自动恢复。",
   "outcomes": {
+    "comparison_pending": "等待同题对照",
     "models_isolated": "降智模型已隔离，分组保留",
     "groups_restored_models_isolated": "已恢复原分组，其余降智模型保持隔离",
 
@@ -380,6 +397,7 @@ export default {
   "discard": "放弃修改",
   "disableSchedulingShort": "关闭调度，保留分组",
   "actionHelp": {
+    "comparison_pending": "原始答题结果已保存，等待同批账号完成后再比较并决定处置。",
     "models_isolated": "仅隔离明确答错的模型，正常模型继续服务。模型隔离持续至独立复测通过，不会按时间自动解除。",
     "groups_restored_models_isolated": "至少一个模型复测通过，已恢复本规则移出的原分组。其他未恢复的模型继续保持隔离。",
 

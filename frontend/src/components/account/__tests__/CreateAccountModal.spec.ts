@@ -1,3 +1,6 @@
+vi.mock('@/api/admin/upstreamChannels', () => ({ listUpstreamChannels: vi.fn(), readChannelBindings: vi.fn(), bindChannelAccounts: vi.fn() }))
+import { readChannelBindings, listUpstreamChannels } from '@/api/admin/upstreamChannels'
+import UpstreamChannelSelector from '../UpstreamChannelSelector.vue'
 
 vi.mock('@/api/admin/credentialEncryption', () => ({
   getCredentialEncryption: vi.fn().mockResolvedValue({ configured: true, source: 'server_config' }),
@@ -199,7 +202,8 @@ async function selectButtonByText(wrapper: ReturnType<typeof mountModal>, text: 
 async function submitApiKeyAccount(
   platform: 'openai' | 'anthropic',
   enableLongContextBilling = false,
-  disableUpstreamBillingProbe = false
+  disableUpstreamBillingProbe = false,
+  enableResponseTierBilling = false
 ) {
   const wrapper = mountModal()
   await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
@@ -210,6 +214,9 @@ async function submitApiKeyAccount(
   await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
   if (enableLongContextBilling) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
+  }
+  if (enableResponseTierBilling) {
+    await wrapper.get('[data-testid="create-openai-ultrafast-billing-toggle"]').trigger('click')
   }
   if (disableUpstreamBillingProbe) {
     await wrapper.get('[data-testid="upstream-billing-auto-probe"]').trigger('click')
@@ -249,6 +256,25 @@ function expectWSAcceleration(extra: unknown, enabled: boolean) {
 }
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
+  it('leaves upstream response-tier billing disabled by default', async () => {
+    await submitApiKeyAccount('openai')
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty(
+      'openai_response_tier_billing_enabled'
+    )
+  })
+
+  it('enables upstream UltraFast billing for every model on a new API-key account', async () => {
+    await submitApiKeyAccount('openai', false, false, true)
+
+    expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
+      platform: 'openai',
+      type: 'apikey',
+      extra: expect.objectContaining({ openai_response_tier_billing_enabled: true })
+    }))
+  })
+
   it('saves extra image models only for OpenAI API-key accounts', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')
@@ -1029,7 +1055,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     const labels = (testid: string) =>
       wrapper.get(`[data-testid="${testid}"]`).findAll('button').map(button => button.text().trim())
     expect(labels('platform-row-cn')).toEqual(['Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax'])
-    expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline'])
+    expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline', 'Mistral'])
   })
 
   it('creates a Cline account without an account type and with only the Chat Completions endpoint', async () => {
@@ -1054,6 +1080,36 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(payload?.credentials).not.toHaveProperty('protocol_rules')
     expect(payload?.credentials?.api_base_urls).not.toHaveProperty('responses')
     expect(payload?.credentials?.api_base_urls).not.toHaveProperty('anthropic')
+  })
+
+  it('creates Mistral through the catalog with API key and only its native Chat endpoint', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="platform-button-mistral"]').trigger('click')
+    expect(wrapper.get('[data-testid="platform-button-mistral"]').classes()).toContain('text-orange-600')
+    expect(wrapper.find('button.border-orange-500').exists()).toBe(true)
+    expect(wrapper.find('button.border-orange-500 .bg-orange-500').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="generic-account-mode"]').exists()).toBe(false)
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Mistral')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('fixture-mistral-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'mistral',
+      type: 'apikey',
+      credentials: {
+        api_key: 'fixture-mistral-key',
+        account_mode: 'payg',
+        api_protocol: 'adaptive',
+        base_url: 'https://api.mistral.ai/v1',
+        api_base_urls: { chat_completions: 'https://api.mistral.ai/v1' },
+      },
+    })
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials.api_base_urls).toEqual({
+      chat_completions: 'https://api.mistral.ai/v1',
+    })
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials.model_mapping).toHaveProperty('zai-glm-5-3', 'zai-glm-5-3')
   })
 
   it('submits adaptive Kimi protocol endpoints', async () => {
@@ -1181,6 +1237,56 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
     // 上游倍率探测已放宽到全部 API-key 平台：非 OpenAI 平台与 OpenAI 一致，默认开启。
     expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBe(true)
+  })
+
+  it.each([false, true])('saves Anthropic mimic with estimated deduction=%s and clears strip identity', async (deduct) => {
+    const wrapper = mountModal()
+    expect(wrapper.find('[data-testid="anthropic-mimic-claude-code-toggle"]').exists()).toBe(false)
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Claude Code relay')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('fixture-only-key')
+
+    const mimic = wrapper.get('[data-testid="anthropic-mimic-claude-code-toggle"]')
+    const strip = wrapper.findAll('div.flex.items-center.justify-between')
+      .find(row => row.text().includes('admin.accounts.anthropic.stripClaudeCodeIdentityDesc'))!
+      .get('button')
+    expect(mimic.classes()).not.toContain('bg-primary-600')
+    await strip.trigger('click')
+    await mimic.trigger('click')
+    await flushPromises()
+    expect(strip.classes()).not.toContain('bg-primary-600')
+    const deduction = wrapper.get('[data-testid="anthropic-mimic-claude-code-deduct-tokens-toggle"]')
+    expect(deduction.attributes('aria-checked')).toBe('false')
+    if (deduct) {
+      await deduction.trigger('click')
+    }
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload).toMatchObject({
+      platform: 'anthropic', type: 'apikey', extra: { anthropic_mimic_claude_code: true },
+    })
+    expect(payload.extra).not.toHaveProperty('anthropic_strip_claude_code_identity')
+    if (deduct) {
+      expect(payload.extra.anthropic_mimic_claude_code_deduct_tokens).toBe(true)
+    } else {
+      expect(payload.extra).not.toHaveProperty('anthropic_mimic_claude_code_deduct_tokens')
+    }
+  })
+
+  it('clears the Anthropic mimic switch when changing the account platform', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    await wrapper.get('[data-testid="anthropic-mimic-claude-code-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="anthropic-mimic-claude-code-deduct-tokens-toggle"]').trigger('click')
+    await selectButtonByText(wrapper, 'OpenAI')
+    expect(wrapper.find('[data-testid="anthropic-mimic-claude-code-toggle"]').exists()).toBe(false)
+    await selectButtonByText(wrapper, 'Anthropic')
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    expect(wrapper.get('[data-testid="anthropic-mimic-claude-code-toggle"]').classes()).not.toContain('bg-primary-600')
+    await wrapper.get('[data-testid="anthropic-mimic-claude-code-toggle"]').trigger('click')
+    expect(wrapper.get('[data-testid="anthropic-mimic-claude-code-deduct-tokens-toggle"]').attributes('aria-checked')).toBe('false')
   })
 
   it('sends an explicit disabled state when the non-OpenAI create toggle is turned off', async () => {
@@ -1409,4 +1515,30 @@ describe('CreateAccountModal Vertex API key auth', () => {
     expect(wrapper.find('[data-testid="vertex-auth-mode-apikey"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="vertex-api-key-input"]').exists()).toBe(false)
   })
+})
+
+describe('explicit upstream channel on account creation', () => {
+ it('confirms selected ownership, sends immutable entity ID and verifies binding without duplicating after a failed readback', async () => {
+  const w = mountModal(); await selectButtonByText(w, 'admin.accounts.claudeConsole')
+  await w.get('form#create-account-form input[type="text"]').setValue('owned account')
+  await w.get('form#create-account-form input[type="password"]').setValue('fixture-only-key')
+  createAccountMock.mockResolvedValue({ id: 700, name: 'owned account', platform: 'anthropic', type: 'apikey' })
+  w.getComponent(UpstreamChannelSelector).vm.$emit('update:modelValue', 7); await flushPromises()
+  await w.get('form#create-account-form').trigger('submit.prevent'); await flushPromises(); expect(createAccountMock).not.toHaveBeenCalled()
+  await w.get('[data-testid="confirm-create-channel"]').setValue(true)
+  vi.mocked(readChannelBindings).mockRejectedValueOnce(new Error('offline'))
+  await w.get('form#create-account-form').trigger('submit.prevent'); await flushPromises()
+  expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({ upstream_channel_id: 7, confirm_upstream_channel_binding: true }))
+  expect(w.emitted('created')).toBeUndefined()
+  vi.mocked(readChannelBindings).mockResolvedValue([{ account_id: 700, account_name: 'owned account', channel_id: 7, revision: 1, deleted: false }])
+  await w.get('form#create-account-form').trigger('submit.prevent'); await flushPromises()
+  expect(createAccountMock).toHaveBeenCalledTimes(1); expect(w.emitted('created')).toHaveLength(1)
+ })
+ it('supports paging a channel catalog and selecting an entity regardless of account URL', async () => {
+  vi.mocked(listUpstreamChannels).mockResolvedValue({ items: [{ id: 7, code: 'supplier', name: '渠道', remark: '', revision: 1, members: 0 }], total: 21 })
+  const w = mountModal(); const selector = w.getComponent(UpstreamChannelSelector)
+  await selector.get('[data-testid="upstream-channel-select"]').trigger('focus'); await flushPromises()
+  await selector.get('[data-testid="upstream-channel-select"]').setValue('7')
+  expect(w.find('[data-testid="confirm-create-channel"]').exists()).toBe(true)
+ })
 })
