@@ -35,6 +35,7 @@ func TestGroupSystemPromptWebSocketEveryTurn(t *testing.T) {
 					want = "gateway"
 				}
 				hooks := &OpenAIWSIngressHooks{
+					ForcedReasoningEffort: "high",
 					RewriteRequest: func(_ int, body []byte) ([]byte, error) {
 						return ApplyGroupSystemPromptPolicy(body, &Group{SystemPromptMode: mode, SystemPrompt: "gateway"}, GroupSystemPromptProtocolResponses)
 					},
@@ -60,6 +61,7 @@ func TestGroupSystemPromptWebSocketEveryTurn(t *testing.T) {
 						require.Equal(t, "user", gjson.GetBytes(body, "input.0.role").String())
 					}
 					require.Equal(t, want, gjson.GetBytes(body, "instructions").String())
+					require.Equal(t, "high", gjson.GetBytes(body, "reasoning.effort").String())
 					upstream.Send(fmt.Sprintf(`{"type":"response.completed","response":{"id":"resp_%d","usage":{"input_tokens":4,"output_tokens":2}}}`, turn))
 					_, err := readPassthroughLifecycleFrame(t, client, time.Second)
 					require.NoError(t, err)

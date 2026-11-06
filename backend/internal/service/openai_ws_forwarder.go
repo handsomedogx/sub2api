@@ -262,8 +262,14 @@ type OpenAIWSIngressHooks struct {
 	MaxReasoningEffortOverLimit string
 	// ReasoningEffortMappings rewrites explicit effort values for this WS session.
 	ReasoningEffortMappings []ReasoningEffortMapping
-	TurnStarted             func(turn int, startedAt time.Time)
-	BeforeTurn              func(turn int) error
+	// ForcedReasoningEffort is the administrator's per-key preference. The
+	// group ceiling remains authoritative after applying it to every turn.
+	ForcedReasoningEffort string
+	// APIKeyModelMapping canonicalizes model keys after a per-key mapping so
+	// duplicate/case-variant client fields cannot survive into an upstream parser.
+	APIKeyModelMapping bool
+	TurnStarted        func(turn int, startedAt time.Time)
+	BeforeTurn         func(turn int) error
 	// RewriteRequest applies inbound group instructions before account transforms.
 	RewriteRequest func(turn int, payload []byte) ([]byte, error)
 	BeforeRequest  func(turn int, payload []byte, originalModel string) error
@@ -283,6 +289,13 @@ type OpenAIWSIngressHooks struct {
 	// that must be written into the upstream response.create frame.
 	MapRequestModel func(turn int, originalModel string) (string, error)
 	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
+}
+
+func (h *OpenAIWSIngressHooks) forcedReasoningEffort() string {
+	if h == nil {
+		return ""
+	}
+	return h.ForcedReasoningEffort
 }
 
 // beforeRequest preserves both admission callbacks when an embedding installs

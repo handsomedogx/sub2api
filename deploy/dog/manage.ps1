@@ -48,7 +48,7 @@ if ($Action -in @('Start', 'Rebuild', 'Build', 'Push')) {
     $env:SUB2API_COMMIT = $commit
     if (!$env:SUB2API_VERSION) {
         $baseVersion = (Get-Content (Join-Path $PSScriptRoot '../../backend/cmd/server/VERSION') -Raw).Trim()
-        $env:SUB2API_VERSION = "$baseVersion-dog"
+        $env:SUB2API_VERSION = $baseVersion
     }
     if ($Proxy) {
         $env:HTTP_PROXY = $Proxy

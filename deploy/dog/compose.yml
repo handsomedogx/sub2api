@@ -16,7 +16,7 @@ services:
         org.opencontainers.image.source: https://github.com/handsomedogx/sub2api
         org.opencontainers.image.revision: ${SUB2API_COMMIT:-local}
       args:
-        VERSION: ${SUB2API_VERSION:-local-dog}
+        VERSION: ${SUB2API_VERSION:-}
         COMMIT: ${SUB2API_COMMIT:-local}
         NPM_CONFIG_REGISTRY: https://registry.npmmirror.com
         NODE_OPTIONS: --max-old-space-size=4096

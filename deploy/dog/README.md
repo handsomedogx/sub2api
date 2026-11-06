@@ -72,6 +72,8 @@ Docker 镜像下载使用 Docker Desktop 自身的代理设置，与 Git 的代�
 工作流为 `.github/workflows/dog-image.yml`，名字是 **Dog container image**。
 仅 `dog-*` 标签推送或手动执行时构建，不会因为每次普通代码 push 就构建镜像。
 `dog-*` 与上游 `v*` 发布标签分开，镜像路径为 `ghcr.io/handsomedogx/sub2api-dog`。
+应用显示版本直接使用 `backend/cmd/server/VERSION`（例如 `2.19.7`），不追加 `-dog`；
+本地构建也使用相同规则，仍可用 `SUB2API_VERSION` 显式覆盖。
 
 先提交自己的代码，保持工作区干净，然后在仓库根目录运行：
 

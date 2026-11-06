@@ -29,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY,,}-dog"
-          version="$(tr -d '\r\n' < backend/cmd/server/VERSION)-dog"
+          version="$(tr -d '\r\n' < backend/cmd/server/VERSION)"
           {
             echo "name=$image"
             echo "version=$version"
