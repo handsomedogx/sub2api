@@ -19,7 +19,7 @@ func TestChannelMonitorDisplayOrderTransaction(t *testing.T) {
 		t.Run(outcome, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			repo := &channelMonitorRepository{db: db}
 			ids := []int64{9, 3}
 			mock.ExpectBegin()
@@ -56,7 +56,7 @@ func TestChannelMonitorDisplayOrderTransaction(t *testing.T) {
 func TestChannelMonitorDisplayOrderLabels(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectQuery("SELECT m.id, m.name, m.provider, m.group_name, m.enabled").WillReturnRows(
 		sqlmock.NewRows([]string{"id", "name", "provider", "group_name", "enabled"}).
 			AddRow(9, "Paused", "openai", "GPT", false).AddRow(3, "Claude", "anthropic", "", true))
@@ -69,7 +69,7 @@ func TestChannelMonitorDisplayOrderLabels(t *testing.T) {
 func TestChannelMonitorDisplayOrderUsedBeforeAdminPaginationAndUserFiltering(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := &channelMonitorRepository{db: db, client: dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))}
 	mock.ExpectQuery(`SELECT COUNT`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
 	// The same order expression precedes LIMIT/OFFSET on the paginated admin list.

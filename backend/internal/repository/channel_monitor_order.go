@@ -23,7 +23,7 @@ ORDER BY COALESCE(o.sort_order, 2147483647), m.id DESC`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]service.ChannelMonitorOrderItem, 0)
 	for rows.Next() {
 		var item service.ChannelMonitorOrderItem
@@ -40,7 +40,7 @@ func (r *channelMonitorRepository) UpdateDisplayOrder(ctx context.Context, ids [
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// Serialize order saves and hold creates/deletes until the complete list is checked.
 	if _, err = tx.ExecContext(ctx, `LOCK TABLE channel_monitors IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 		return err

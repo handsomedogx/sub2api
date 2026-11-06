@@ -29,9 +29,10 @@ func TestGroupSystemPromptWebSocketEveryTurn(t *testing.T) {
 				}
 				finishedTurns := make(chan int, 2)
 				want := "client"
-				if mode == "inject" {
+				switch mode {
+				case "inject":
 					want = "gateway\n\nclient"
-				} else if mode == "replace" {
+				case "replace":
 					want = "gateway"
 				}
 				hooks := &OpenAIWSIngressHooks{
@@ -51,7 +52,7 @@ func TestGroupSystemPromptWebSocketEveryTurn(t *testing.T) {
 				defer server.Close()
 				const request = `{"type":"response.create","model":"gpt-5.1","instructions":"client","input":[{"role":"developer","content":"developer"},{"role":"user","content":"hello"}]}`
 				client := dialPassthroughLifecycleClientWithPayload(t, server, request)
-				defer client.CloseNow()
+				defer func() { _ = client.CloseNow() }()
 				for turn := 1; turn <= 2; turn++ {
 					if turn > 1 {
 						require.NoError(t, client.Write(context.Background(), coderws.MessageText, []byte(request)))
