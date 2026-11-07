@@ -571,6 +571,7 @@ export default {
 	  upstreamModelMatchedOnly: '仅一致',
       ipAddress: 'IP',
       clickToViewBalance: '点击查看充值记录',
+      clickToFilterUser: '按此用户筛选使用记录',
       failedToLoadUser: '加载用户信息失败',
       userDeletedBadge: '已删除',
       tokenRanking: {

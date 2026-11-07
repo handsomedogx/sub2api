@@ -42,6 +42,17 @@
               {{ row.user.email }}
             </button>
             <span v-else class="font-medium text-gray-900 dark:text-white">-</span>
+            <button
+              v-if="userFilterable && !observerMode && row.user_id"
+              type="button"
+              data-testid="usage-user-filter"
+              class="ml-1 inline-flex rounded p-1 align-middle text-gray-400 transition-colors hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-primary-900/30 dark:hover:text-primary-400"
+              :title="t('admin.usage.clickToFilterUser')"
+              :aria-label="t('admin.usage.clickToFilterUser')"
+              @click="$emit('userFilter', row.user_id, row.user?.email)"
+            >
+              <Icon name="filter" size="xs" aria-hidden="true" />
+            </button>
             <span v-if="row.user?.deleted_at" class="ml-1 inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
               {{ t('admin.usage.userDeletedBadge') }}
             </span>
@@ -631,6 +642,7 @@ interface Props {
   flat?: boolean
   /** 管理端默认可见；用户端还要打开「向用户展示」。 */
   cacheRateAudience?: 'admin' | 'user'
+  userFilterable?: boolean
 }
 
 const observerMode = inject(observerUsageContext, false)
@@ -646,10 +658,12 @@ const props = withDefaults(defineProps<Props>(), {
   enableTimingDetails: false,
   showUpstreamEndpoint: true,
   flat: false,
-  cacheRateAudience: 'admin'
+  cacheRateAudience: 'admin',
+  userFilterable: false
 })
 const emit = defineEmits<{
   userClick: [userID: number, email?: string]
+  userFilter: [userID: number, email?: string]
   sort: [key: string, order: 'asc' | 'desc']
   ipGeoBatchFailed: []
 }>()

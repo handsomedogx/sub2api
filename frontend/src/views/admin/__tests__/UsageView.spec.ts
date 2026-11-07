@@ -149,9 +149,9 @@ const UsageFiltersStub = defineComponent({
   template: '<div><button data-test="cleanup-open" @click="$emit(\'cleanup\')">cleanup</button><span data-test="user-filter-label">{{ userKeyword }}</span><slot name="after-reset" /></div>',
 })
 const UsageTableStub = {
-  props: ['columns'],
-  emits: ['userClick'],
-  template: '<div data-test="usage-table"><button class="user-click" @click="$emit(\'userClick\', 2)">user</button></div>',
+  props: ['columns', 'userFilterable'],
+  emits: ['userClick', 'userFilter'],
+  template: '<div data-test="usage-table"><button class="user-click" @click="$emit(\'userClick\', 2)">user</button><button class="user-filter" @click="$emit(\'userFilter\', 2, \'d@test.com\')">filter</button></div>',
 }
 const UsageConnectionsStub = { props: ['filters', 'refreshKey'], template: '<div data-test="connection-tab" />' }
 const LatencyObservabilityPanelStub = {
@@ -197,7 +197,7 @@ const GroupDistributionChartStub = {
 const mountRouteFilteredUsageView = (realDatePicker = false, realCleanupDialog = false) => mount(UsageView, {
   global: { stubs: {
     AppLayout: AppLayoutStub, UsageStatsCards: true, UsageFilters: UsageFiltersStub,
-    UsageTable: true, UsageExportProgress: true, UsageCleanupDialog: !realCleanupDialog,
+    UsageTable: UsageTableStub, UsageExportProgress: true, UsageCleanupDialog: !realCleanupDialog,
     BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' },
     ConfirmDialog: { props: ['show'], emits: ['confirm'], template: '<button v-if="show" data-test="cleanup-confirm" @click="$emit(\'confirm\')">confirm</button>' },
     UserBalanceHistoryModal: true, Pagination: true, Select: true,
@@ -661,6 +661,29 @@ describe('admin UsageView handleUserClick', () => {
     vi.useRealTimers()
   })
 
+  it('filters usage and stats with the extra button while preserving the time range and other filters', async () => {
+    const wrapper = mountRouteFilteredUsageView()
+    await vi.advanceTimersByTimeAsync(150)
+    await flushPromises()
+    const vm = wrapper.vm as any
+    vm.datePreset = null
+    vm.filters = { ...vm.filters, user_id: 9, api_key_id: 8, model: 'gpt-test', group_id: 3, start_date: '2026-11-01', end_date: '2026-11-02' }
+    vm.pagination.page = 3
+    list.mockClear()
+    getStats.mockClear()
+
+    expect(wrapper.findComponent(UsageTableStub).props('userFilterable')).toBe(true)
+    await wrapper.get('.user-filter').trigger('click')
+    await flushPromises()
+
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, user_id: 2, api_key_id: undefined, model: 'gpt-test', group_id: 3, start_date: '2026-11-01', end_date: '2026-11-02' }), expect.anything())
+    expect(getStats).toHaveBeenLastCalledWith(expect.objectContaining({ user_id: 2, api_key_id: undefined, model: 'gpt-test', group_id: 3 }))
+    expect(wrapper.get('[data-test="user-filter-label"]').text()).toBe('d@test.com')
+    expect(getById).not.toHaveBeenCalled()
+    expect(wrapper.find('user-balance-history-modal-stub').attributes('show')).toBe('false')
+    wrapper.unmount()
+  })
+
   it('opens user via include_deleted when clicking a usage row user', async () => {
     getById.mockResolvedValue({ id: 2, email: 'd@test.com', deleted_at: '2026-05-28T00:00:00Z' })
 
@@ -695,6 +718,7 @@ describe('admin UsageView handleUserClick', () => {
     await flushPromises()
 
     expect(getById).toHaveBeenCalledWith(2, true)
+    expect(wrapper.find('user-balance-history-modal-stub').attributes('show')).toBe('true')
   })
 })
 
@@ -929,6 +953,9 @@ describe('observer own usage view', () => {
       expect(wrapper.findComponent(name).props('enableBreakdown')).toBe(false)
     }
     await wrapper.find('.user-click').trigger('click')
+    expect(wrapper.findComponent(UsageTableStub).props('userFilterable')).toBe(false)
+    await wrapper.find('.user-filter').trigger('click')
+    expect((wrapper.vm as any).filters.user_id).toBeUndefined()
     const filter = wrapper.findComponent(UsageFiltersStub)
     filter.vm.$emit('update:modelValue', { account_id: 7, group_id: 8, api_key_id: 9, model: 'gpt', start_date: '2026-09-01', end_date: '2026-09-02' })
     filter.vm.$emit('change')

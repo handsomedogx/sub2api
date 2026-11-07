@@ -978,7 +978,7 @@ const DataTableStubWithUser = {
 }
 
 describe('admin UsageTable deleted-user badge', () => {
-  it('renders deleted badge for a soft-deleted user row', () => {
+  it('keeps balance history and user filtering as separate actions for a deleted user', async () => {
     const row = {
       request_id: 'req-deleted-user-1',
       model: 'claude-3',
@@ -997,6 +997,7 @@ describe('admin UsageTable deleted-user badge', () => {
       props: {
         data: [row],
         loading: false,
+        userFilterable: true,
         columns: [{ key: 'user', label: 'User' }],
       },
       global: {
@@ -1011,6 +1012,13 @@ describe('admin UsageTable deleted-user badge', () => {
 
     expect(wrapper.text()).toContain('Deleted')
     expect(wrapper.text()).toContain('d@test.com')
+    await wrapper.get('button[title="admin.usage.clickToViewBalance"]').trigger('click')
+    expect(wrapper.emitted('userClick')).toEqual([[2, 'd@test.com']])
+    expect(wrapper.emitted('userFilter')).toBeUndefined()
+
+    await wrapper.get('[data-testid="usage-user-filter"]').trigger('click')
+    expect(wrapper.emitted('userFilter')).toEqual([[2, 'd@test.com']])
+    expect(wrapper.emitted('userClick')).toHaveLength(1)
   })
 
   it('does NOT render deleted badge for an active user row', () => {
@@ -1046,6 +1054,7 @@ describe('admin UsageTable deleted-user badge', () => {
 
     expect(wrapper.text()).not.toContain('Deleted')
     expect(wrapper.text()).toContain('active@test.com')
+    expect(wrapper.find('[data-testid="usage-user-filter"]').exists()).toBe(false)
   })
 })
 

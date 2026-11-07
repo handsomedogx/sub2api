@@ -138,8 +138,10 @@
             :default-sort-key="'created_at'"
             :default-sort-order="'desc'"
             :cache-rate-audience="props.observerMode ? 'user' : 'admin'"
+            :user-filterable="!props.observerMode"
             @sort="handleSort"
             @userClick="handleUserClick"
+            @userFilter="handleUserFilter"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"
           />
           <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
@@ -302,6 +304,13 @@ const handleUserClick = async (userId: number) => {
   } catch {
     appStore.showError(t('admin.usage.failedToLoadUser'))
   }
+}
+
+const handleUserFilter = (userId: number, email?: string) => {
+  if (props.observerMode) return
+  filters.value = { ...filters.value, user_id: userId, api_key_id: undefined }
+  usageFiltersRef.value?.setUserKeyword?.(email || String(userId))
+  applyFilters()
 }
 
 // Drill down from the per-user token ranking: scope the whole usage view to

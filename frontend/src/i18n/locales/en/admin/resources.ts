@@ -574,6 +574,7 @@ export default {
 	  upstreamModelMatchedOnly: 'Matched only',
       ipAddress: 'IP',
       clickToViewBalance: 'Click to view balance history',
+      clickToFilterUser: 'Filter usage by this user',
       failedToLoadUser: 'Failed to load user info',
       userDeletedBadge: 'Deleted',
       tokenRanking: {
