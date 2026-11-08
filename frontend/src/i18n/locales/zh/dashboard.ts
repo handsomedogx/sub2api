@@ -449,6 +449,7 @@ export default {
     latencyTps: '平均 TPS',
     latencyTpsHint: '平均 TPS = 输出 Token ÷ 总耗时(秒). 包含等待时间及上游计入输出用量的推理 Token, 不代表模型实际生成速度.',
     latencyCacheRate: '缓存率',
+    groupCacheRateHint: '按所选时间范围与筛选条件汇总：缓存读取 ÷（未缓存输入 + 缓存读取 + 缓存写入），不包含输出 Token。无输入 Token 时显示 —。',
     latencyCacheRateHint: '缓存率 = 缓存读取 {read} ÷ (输入 {input} + 缓存读取 {read} + 缓存写入 {write})。与渠道监控和用量趋势同一口径。',
     time: '时间',
     ws: 'WS',

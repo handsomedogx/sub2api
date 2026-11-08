@@ -44,6 +44,9 @@
               <th class="pb-2 text-left">{{ t('admin.dashboard.group') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.requests') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.tokens') }}</th>
+              <th v-if="showCacheRate" class="whitespace-nowrap px-3 pb-2 text-right" :title="t('usage.groupCacheRateHint')">
+                {{ t('usage.latencyCacheRate') }}
+              </th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.actual') }}</th>
               <th v-if="showAccountCost" class="pb-2 text-right">{{ t('admin.dashboard.accountCost') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.standard') }}</th>
@@ -72,6 +75,14 @@
                 </td>
                 <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
                   {{ formatTokens(group.total_tokens) }}
+                </td>
+                <td
+                  v-if="showCacheRate"
+                  :data-testid="`group-cache-rate-${group.group_id}`"
+                  :title="cacheRateTitle(group)"
+                  class="px-3 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-400"
+                >
+                  {{ formatUsageCacheRate(group) ?? '—' }}
                 </td>
                 <td class="py-1.5 text-right text-green-600 dark:text-green-400">
                   ${{ formatCost(group.actual_cost) }}
@@ -116,6 +127,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
 import type { GroupStat, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
+import { formatUsageCacheRate, usageCacheRateParts } from '@/utils/usageCacheRate'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
@@ -130,6 +142,7 @@ const props = withDefaults(defineProps<{
   showMetricToggle?: boolean
   enableBreakdown?: boolean
   showAccountCost?: boolean
+  showCacheRate?: boolean
   startDate?: string
   endDate?: string
   filters?: Record<string, any>
@@ -139,6 +152,7 @@ const props = withDefaults(defineProps<{
   showMetricToggle: false,
   enableBreakdown: true,
   showAccountCost: true,
+  showCacheRate: false,
 })
 
 const emit = defineEmits<{
@@ -149,7 +163,17 @@ const expandedKey = ref<string | null>(null)
 const breakdownItems = ref<UserBreakdownItem[]>([])
 const breakdownLoading = ref(false)
 const showAccountCost = computed(() => props.showAccountCost)
-const distributionColspan = computed(() => showAccountCost.value ? 6 : 5)
+const distributionColspan = computed(() => (showAccountCost.value ? 6 : 5) + (props.showCacheRate ? 1 : 0))
+
+const cacheRateTitle = (group: GroupStat): string => {
+  const parts = usageCacheRateParts(group)
+  if (!parts) return t('usage.groupCacheRateHint')
+  return t('usage.latencyCacheRateHint', {
+    input: parts.input.toLocaleString(),
+    read: parts.read.toLocaleString(),
+    write: parts.write.toLocaleString(),
+  })
+}
 
 const toggleBreakdown = async (type: string, id: number | string) => {
   const key = `${type}-${id}`

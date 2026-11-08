@@ -563,7 +563,7 @@ func TestUsageLogRepositoryUsageAggregatesFilterNativeCompactionV2(t *testing.T)
 		repo := &usageLogRepository{sql: db}
 		mock.ExpectQuery("(?s)FROM usage_logs ul.*AND ul.native_compaction_v2 = \\$3").
 			WithArgs(start, end, true).
-			WillReturnRows(sqlmock.NewRows([]string{"group_id", "group_name", "requests", "total_tokens", "cost", "actual_cost", "account_cost"}))
+			WillReturnRows(sqlmock.NewRows([]string{"group_id", "group_name", "requests", "input_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost", "account_cost"}))
 
 		_, err := repo.GetGroupStatsWithUsageFilters(context.Background(), start, end, filters)
 		require.NoError(t, err)
@@ -757,11 +757,11 @@ func TestUsageLogRepositoryGetGroupStatsAccountCostColumn(t *testing.T) {
 	mock.ExpectQuery("FROM usage_logs").
 		WithArgs(start, end).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"group_id", "group_name", "requests", "total_tokens",
+			"group_id", "group_name", "requests", "input_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens",
 			"cost", "actual_cost", "account_cost",
 		}).
-			AddRow(int64(1), "azure-cc", int64(100), int64(5000), 10.0, 8.5, 7.2).
-			AddRow(int64(2), "max", int64(50), int64(2000), 5.0, 4.0, 3.5))
+			AddRow(int64(1), "azure-cc", int64(100), int64(1000), int64(500), int64(3000), int64(5000), 10.0, 8.5, 7.2).
+			AddRow(int64(2), "max", int64(50), int64(500), int64(0), int64(0), int64(2000), 5.0, 4.0, 3.5))
 
 	results, err := repo.GetGroupStatsWithFilters(context.Background(), start, end, 0, 0, 0, 0, nil, nil, nil)
 	require.NoError(t, err)
@@ -771,6 +771,9 @@ func TestUsageLogRepositoryGetGroupStatsAccountCostColumn(t *testing.T) {
 	require.Equal(t, 10.0, results[0].Cost)
 	require.Equal(t, 8.5, results[0].ActualCost)
 	require.Equal(t, 7.2, results[0].AccountCost)
+	require.Equal(t, int64(1000), results[0].InputTokens)
+	require.Equal(t, int64(500), results[0].CacheCreationTokens)
+	require.Equal(t, int64(3000), results[0].CacheReadTokens)
 	require.Equal(t, int64(2), results[1].GroupID)
 	require.Equal(t, 3.5, results[1].AccountCost)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -787,14 +790,37 @@ func TestUsageLogRepositoryGetGroupStatsWithUsageFiltersAppliesRequestedModelFil
 	mock.ExpectQuery("AND COALESCE\\(NULLIF\\(TRIM\\(ul.requested_model\\), ''\\), ul.model\\) = \\$3").
 		WithArgs(start, end, "gpt-5").
 		WillReturnRows(sqlmock.NewRows([]string{
-			"group_id", "group_name", "requests", "total_tokens",
+			"group_id", "group_name", "requests", "input_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens",
 			"cost", "actual_cost", "account_cost",
-		}).AddRow(int64(1), "default", int64(1), int64(30), 0.1, 0.08, 0.07))
+		}).AddRow(int64(1), "default", int64(1), int64(10), int64(0), int64(0), int64(30), 0.1, 0.08, 0.07))
 
 	results, err := repo.GetGroupStatsWithUsageFilters(context.Background(), start, end, filters)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	require.Equal(t, int64(1), results[0].GroupID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGroupCacheTokensAreAggregatedWithinUserAndGroupFilters(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+	start := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	filters := usagestats.UsageLogFilters{UserID: 42, GroupID: 7}
+
+	mock.ExpectQuery(`(?s)SUM\(ul.input_tokens\).*SUM\(ul.cache_creation_tokens\).*SUM\(ul.cache_read_tokens\).*FROM usage_logs ul.*ul.user_id = \$3.*ul.group_id = \$4.*GROUP BY ul.group_id, g.name`).
+		WithArgs(start, end, int64(42), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"group_id", "group_name", "requests", "input_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost", "account_cost",
+		}).AddRow(int64(7), "Group 7", int64(2), int64(110), int64(90), int64(900), int64(9100), 1.0, 0.8, 0.5))
+
+	groups, err := repo.GetGroupStatsWithUsageFilters(context.Background(), start, end, filters)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Equal(t, int64(7), groups[0].GroupID)
+	require.Equal(t, int64(110), groups[0].InputTokens)
+	require.Equal(t, int64(90), groups[0].CacheCreationTokens)
+	require.Equal(t, int64(900), groups[0].CacheReadTokens)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

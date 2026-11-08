@@ -15,6 +15,7 @@ const messages: Record<string, string> = {
   'admin.dashboard.metricTokens': 'By Tokens',
   'admin.dashboard.metricActualCost': 'By Actual Cost',
   'admin.dashboard.noDataAvailable': 'No data available',
+  'usage.latencyCacheRate': 'Cache rate',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -129,5 +130,35 @@ describe('GroupDistributionChart', () => {
     expect(wrapper.text()).not.toContain('Account Cost')
     expect(wrapper.findAll('thead th')).toHaveLength(5)
     expect(wrapper.findAll('tbody tr')[0].findAll('td')).toHaveLength(5)
+  })
+
+  it('shows each group’s prompt cache rate from aggregated buckets, excluding output tokens', () => {
+    const wrapper = mount(GroupDistributionChart, {
+      props: {
+        showCacheRate: true,
+        groupStats: [
+          { ...groupStats[0], input_tokens: 110, cache_creation_tokens: 90, cache_read_tokens: 900, total_tokens: 9100 },
+          { ...groupStats[1], input_tokens: 100, cache_creation_tokens: 0, cache_read_tokens: 0 },
+          { ...groupStats[1], group_id: 3, input_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0 },
+        ],
+      },
+    })
+
+    expect(wrapper.get('[data-testid="group-cache-rate-1"]').text()).toBe('81.8%')
+    expect(wrapper.get('[data-testid="group-cache-rate-2"]').text()).toBe('0%')
+    expect(wrapper.get('[data-testid="group-cache-rate-3"]').text()).toBe('—')
+    expect(wrapper.findAll('thead th')).toHaveLength(7)
+    expect(wrapper.get('[data-testid="group-cache-rate-1"]').attributes('title')).toBeTruthy()
+    wrapper.unmount()
+  })
+
+  it('keeps unavailable cache data distinct from zero and respects the visibility switch', async () => {
+    const wrapper = mount(GroupDistributionChart, { props: { groupStats, showCacheRate: true } })
+    expect(wrapper.get('[data-testid="group-cache-rate-1"]').text()).toBe('—')
+
+    await wrapper.setProps({ showCacheRate: false })
+    expect(wrapper.find('[data-testid="group-cache-rate-1"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Cache rate')
+    wrapper.unmount()
   })
 })

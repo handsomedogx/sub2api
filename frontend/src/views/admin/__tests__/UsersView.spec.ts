@@ -6,6 +6,7 @@ import type { AdminUser } from '@/types'
 import UsersView from '../UsersView.vue'
 
 const {
+  routerPush,
   listUsers,
   toggleStatus,
   deleteUser,
@@ -16,6 +17,7 @@ const {
   listEnabledDefinitions,
   getBatchUserAttributes
 } = vi.hoisted(() => ({
+  routerPush: vi.fn(),
   listUsers: vi.fn(),
   toggleStatus: vi.fn(),
   deleteUser: vi.fn(),
@@ -26,6 +28,8 @@ const {
   listEnabledDefinitions: vi.fn(),
   getBatchUserAttributes: vi.fn()
 }))
+
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: routerPush }) }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
@@ -190,6 +194,7 @@ describe('admin UsersView', () => {
     localStorage.clear()
 
     listUsers.mockReset()
+    routerPush.mockReset()
     toggleStatus.mockReset()
     deleteUser.mockReset()
     showError.mockReset()
@@ -214,6 +219,16 @@ describe('admin UsersView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('opens usage records scoped to the selected user', async () => {
+    const wrapper = mountBulkDeleteView()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="user-usage-42"]').trigger('click')
+
+    expect(routerPush).toHaveBeenCalledWith({ name: 'AdminUsage', query: { user_id: '42' } })
+    wrapper.unmount()
   })
 
   it('cancels bulk deletion without deleting or clearing selected users', async () => {

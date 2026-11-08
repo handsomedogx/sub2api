@@ -6,6 +6,7 @@ import UsageView from '../UsageView.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
+import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'
 
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ user: { id: 41 } }) }))
 
@@ -268,13 +269,19 @@ describe('admin UsageView route filters', () => {
   it('shows the routed user while applying user_id to usage requests', async () => {
     routeQuery.user_id = '42'
     getById.mockResolvedValue({ id: 42, email: 'route-user@test.com' })
+    const groups = [{ group_id: 7, group_name: 'Group 7', requests: 2, total_tokens: 2100, cost: 1, actual_cost: 1, input_tokens: 100, cache_read_tokens: 900, cache_creation_tokens: 0 }]
+    getSnapshotV2.mockResolvedValue({ trend: [], groups })
 
     const wrapper = mountRouteFilteredUsageView()
+    await vi.advanceTimersByTimeAsync(120)
     await flushPromises()
 
     expect(getById).toHaveBeenCalledWith(42, true)
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ user_id: 42 }), expect.anything())
+    expect(getSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({ user_id: 42, include_group_stats: true }))
+    expect(wrapper.findComponent(GroupDistributionChart).props()).toMatchObject({ groupStats: groups, showCacheRate: true })
     expect(wrapper.find('[data-test="user-filter-label"]').text()).toBe('route-user@test.com')
+    wrapper.unmount()
   })
 
   it('does not apply a stale routed user label after user_id changes', async () => {

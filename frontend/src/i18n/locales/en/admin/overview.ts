@@ -625,6 +625,8 @@ export default {
       disableUser: 'Disable User',
       enableUser: 'Enable User',
       viewApiKeys: 'View API Keys',
+      usageRecords: 'Usage Records',
+      viewUsageRecords: 'View this user’s usage records and cache rates by group',
       groups: 'Groups',
       apiKeys: 'API Keys',
       userApiKeys: 'User API Keys',

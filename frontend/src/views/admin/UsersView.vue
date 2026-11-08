@@ -621,6 +621,16 @@
                 <button type="button" class="rounded-lg p-1.5 text-xs text-amber-700 hover:bg-amber-50 dark:text-amber-300" @click="autoCreditUser = row">{{ t('autoCredit.title') }}</button>
                 <NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.vipAutoCredit" :user-id="creditAuth.user?.id" compact />
               </div>
+              <button
+                type="button"
+                :data-testid="`user-usage-${row.id}`"
+                :title="t('admin.users.viewUsageRecords')"
+                @click="handleViewUsage(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+              >
+                <Icon name="chartBar" size="sm" />
+                <span class="text-xs">{{ t('admin.users.usageRecords') }}</span>
+              </button>
               <!-- Edit Button -->
               <button
                 @click="handleEdit(row)"
@@ -804,6 +814,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -811,6 +822,7 @@ import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
+const router = useRouter()
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
 import type { BatchUserUsageStats } from '@/api/admin/dashboard'
@@ -1780,6 +1792,10 @@ const handleToggleStatus = async (user: AdminUser) => {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
     console.error('Error toggling user status:', error)
   }
+}
+
+const handleViewUsage = (user: AdminUser) => {
+  void router.push({ name: 'AdminUsage', query: { user_id: String(user.id) } })
 }
 
 const handleViewApiKeys = (user: AdminUser) => {

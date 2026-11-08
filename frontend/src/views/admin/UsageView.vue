@@ -41,6 +41,7 @@
           <GroupDistributionChart
             v-model:metric="groupDistributionMetric"
             :group-stats="groupStats"
+            :show-cache-rate="!props.observerMode && showUsageCacheRate(appStore.cachedPublicSettings, 'admin')"
             :loading="chartsLoading"
             :show-metric-toggle="true"
             :start-date="startDate"
