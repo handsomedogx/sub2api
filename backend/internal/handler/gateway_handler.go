@@ -1162,6 +1162,19 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		defer release()
 	}
 
+	if groups, ok := middleware2.GetModelListingGroups(c); ok {
+		if apiKey != nil && apiKey.ConcurrencyLimit > 0 {
+			var err error
+			groups, err = middleware2.RefreshModelListingGroups(c)
+			if err != nil {
+				writeOpenAIModelsError(c, http.StatusServiceUnavailable, "api_error", "Model listing authorization changed; please retry")
+				return
+			}
+		}
+		h.multiGroupModels(c, groups)
+		return
+	}
+
 	var groupID *int64
 	var platform string
 
@@ -1183,13 +1196,13 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID, "")
 		if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
 			source := availableModels
-			if len(source) == 0 {
+			if source == nil {
 				source = service.DefaultModelIDsForPlatform(service.PlatformComposite)
 			}
 			writeAllowlistedModelsList(c, service.PlatformComposite, apiKey.Group.ModelAllowlist.FilterForListing(source))
 			return
 		}
-		if len(availableModels) > 0 {
+		if availableModels != nil {
 			writeModelsList(c, service.PlatformComposite, availableModels)
 			return
 		}
@@ -1205,7 +1218,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
-	if len(availableModels) > 0 || (platform == service.PlatformOpenAI && availableModels != nil) {
+	if availableModels != nil {
 		writeModelsList(c, platform, availableModels)
 		return
 	}
@@ -1284,12 +1297,12 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 		fallbackModels := defaultCodexModelIDsForPlatform(service.PlatformComposite)
 		if group.ModelAllowlistEnabled() {
 			source := availableModels
-			if len(source) == 0 {
+			if source == nil {
 				source = fallbackModels
 			}
 			return group.ModelAllowlist.FilterForListing(source)
 		}
-		if len(availableModels) > 0 {
+		if availableModels != nil {
 			return availableModels
 		}
 		return fallbackModels
@@ -1300,7 +1313,7 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 	if group.ModelAllowlistEnabled() {
 		return group.ModelAllowlist.FilterForListing(service.ModelListingSource(platform, availableModels, fallbackModels))
 	}
-	if len(availableModels) > 0 {
+	if availableModels != nil {
 		return availableModels
 	}
 	return fallbackModels
@@ -1311,14 +1324,17 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 		return nil
 	}
 	seen := make(map[string]struct{})
-	models := make([]string, 0)
+	var models []string
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
 	for _, platform := range domain.CompositePrecedencePlatformIDs() {
 		if platform == service.PlatformTypeSafe && endpoint != "" {
 			continue
 		}
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
-		if len(platformModels) == 0 && (platform != service.PlatformOpenAI || platformModels == nil) {
+		if platformModels != nil && models == nil {
+			models = []string{}
+		}
+		if platformModels == nil {
 			// CN 供应商没有静态默认模型列表（service.DefaultModelIDsForPlatform 的
 			// default 分支是 Claude 列表），composite 下只暴露账号映射键。
 			if _, ok := schedulablePlatforms[platform]; ok && !service.IsMultiProtocolAPIKeyProvider(platform) {
@@ -1351,13 +1367,15 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 }
 
 func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
+	writeModelsListResponse(c, modelsListEntries(platform, modelIDs))
+}
+
+func modelsListEntries(platform string, modelIDs []string) any {
 	if platform == service.PlatformOpenAI {
-		writeOpenAIModelsList(c, modelIDs)
-		return
+		return openAIModelsListEntries(modelIDs)
 	}
 	if platform == service.PlatformGrok {
-		writeGrokModelsList(c, modelIDs)
-		return
+		return grokModelsListEntries(modelIDs)
 	}
 	models := make([]claude.Model, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
@@ -1368,7 +1386,7 @@ func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
 			CreatedAt:   "2024-01-01T00:00:00Z",
 		})
 	}
-	writeModelsListResponse(c, models)
+	return models
 }
 
 func writeAllowlistedModelsList(c *gin.Context, platform string, modelIDs []string) {
@@ -1393,6 +1411,10 @@ type grokModelListItem struct {
 }
 
 func writeGrokModelsList(c *gin.Context, modelIDs []string) {
+	writeModelsListResponse(c, grokModelsListEntries(modelIDs))
+}
+
+func grokModelsListEntries(modelIDs []string) []grokModelListItem {
 	defaults := xai.DefaultModels()
 	defaultsByID := make(map[string]xai.Model, len(defaults))
 	for _, model := range defaults {
@@ -1427,7 +1449,7 @@ func writeGrokModelsList(c *gin.Context, modelIDs []string) {
 		models = append(models, item)
 	}
 
-	writeModelsListResponse(c, models)
+	return models
 }
 
 func grokModelSupportsConfigurableReasoning(modelID string) bool {
@@ -1440,6 +1462,10 @@ func grokModelSupportsConfigurableReasoning(modelID string) bool {
 }
 
 func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
+	writeModelsListResponse(c, openAIModelsListEntries(modelIDs))
+}
+
+func openAIModelsListEntries(modelIDs []string) []openai.Model {
 	defaultsByID := make(map[string]openai.Model, len(openai.DefaultModels))
 	for _, model := range openai.DefaultModels {
 		defaultsByID[model.ID] = model
@@ -1460,7 +1486,7 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 			DisplayName: modelID,
 		})
 	}
-	writeModelsListResponse(c, models)
+	return models
 }
 
 func defaultCodexModelIDsForPlatform(platform string) []string {
