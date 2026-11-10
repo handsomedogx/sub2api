@@ -368,7 +368,7 @@ func (p *ChannelMonitorV3Prober) runOne(ctx context.Context, target channelMonit
 		QuestionKind: ChannelMonitorV3ProbeQuestionKind, Prompt: challenge.Prompt, ReasoningEffort: target.ReasoningEffort,
 		ParallelCount: 1, ModelID: target.Model,
 	}}
-	sample := p.groups.runSample(runCtx, plan, group)
+	sample := p.groups.runSample(withMonitorCostOrigin(runCtx, "v3_idle", 0), plan, group)
 	if ctx.Err() != nil {
 		abandoned = true
 		return

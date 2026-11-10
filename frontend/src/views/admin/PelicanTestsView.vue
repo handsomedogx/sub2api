@@ -255,6 +255,7 @@
             v-model="editor.form.group_id"
             :options="groupOptions"
             :disabled="!!editor.id"
+            @update:model-value="editor.form.model_id = ''"
             searchable
             :placeholder="t('pelicanTests.editor.groupPlaceholder')"
             :aria-label="t('pelicanTests.editor.group')"
@@ -264,7 +265,7 @@
         </div>
         <div>
           <label class="field-label mt-0" for="pelican-test-model">{{ t('pelicanTests.editor.model') }}</label>
-          <input id="pelican-test-model" v-model.trim="editor.form.model_id" maxlength="100" class="input w-full" :placeholder="t('pelicanTests.editor.modelPlaceholder')" data-testid="pelican-test-model" />
+          <GroupModelSelect id="pelican-test-model" v-model="editor.form.model_id" :group-id="editor.form.group_id" data-testid="pelican-test-model" />
           <p class="field-hint">{{ t('pelicanTests.editor.modelHint') }}</p>
         </div>
         <div>
@@ -372,6 +373,7 @@ import Icon from '@/components/icons/Icon.vue'
 import PelicanArtworkPreview from '@/components/user/pelican/PelicanArtworkPreview.vue'
 import PelicanShowcaseApiDialog from '@/components/user/pelican/PelicanShowcaseApiDialog.vue'
 import { pelicanDurationLabel } from '@/components/user/pelican/pelicanShowcaseFormat'
+import GroupModelSelect from '@/components/common/GroupModelSelect.vue'
 import { adminAPI } from '@/api'
 import {
   pelicanTestsAPI,

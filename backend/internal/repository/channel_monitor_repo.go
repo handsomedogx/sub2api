@@ -55,6 +55,9 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 		SetExtraHeaders(channelMonitorHeadersForPersistence(m)).
 		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode)).
 		SetCheckMode(defaultCheckModeRepo(m.CheckMode))
+	if m.GroupID != nil {
+		builder = builder.SetGroupID(*m.GroupID)
+	}
 	if m.TemplateID != nil {
 		builder = builder.SetTemplateID(*m.TemplateID)
 	}
@@ -130,6 +133,11 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 		updater = updater.SetTemplateID(*m.TemplateID)
 	} else {
 		updater = updater.ClearTemplateID()
+	}
+	if m.GroupID != nil {
+		updater = updater.SetGroupID(*m.GroupID)
+	} else {
+		updater = updater.ClearGroupID()
 	}
 	if m.AccountID != nil {
 		updater = updater.SetAccountID(*m.AccountID)
@@ -772,6 +780,7 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 	delete(headers, service.ChannelMonitorDuplicateOperationIDMetadataKey)
 	out := &service.ChannelMonitor{
 		ID:                   row.ID,
+		GroupID:              row.GroupID,
 		Name:                 row.Name,
 		Provider:             string(row.Provider),
 		APIMode:              defaultAPIModeRepo(row.APIMode),

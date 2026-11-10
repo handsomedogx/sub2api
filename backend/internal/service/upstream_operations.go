@@ -16,6 +16,7 @@ import (
 var ErrUpstreamOperationsValidation = infraerrors.BadRequest("UPSTREAM_OPERATIONS_VALIDATION", "运维查询参数无效：请检查时间范围、分页、模型口径及安全上游网址")
 
 type UpstreamOperationsFilter struct {
+	Source     string    `json:"source,omitempty"`
 	From       time.Time `json:"from"`
 	Until      time.Time `json:"until"`
 	Upstream   string    `json:"upstream"`

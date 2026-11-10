@@ -1235,8 +1235,10 @@ func ProvideChannelMonitorService(
 	repo ChannelMonitorRepository,
 	encryptor SecretEncryptor,
 	settingService *SettingService,
+	groups *PelicanGroupTestService,
 ) *ChannelMonitorService {
 	svc := NewChannelMonitorService(repo, encryptor)
+	svc.groups = groups
 	svc.SetRuntimeReader(settingService)
 	return svc
 }

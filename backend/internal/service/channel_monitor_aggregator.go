@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 )
 
 // 渠道监控聚合层：把 latest + availability 拼成 admin/user 视图所需的 summary / detail。
@@ -37,6 +38,19 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 		availMap = map[int64][]*ChannelMonitorAvailability{}
 	}
 
+	rates := map[int64]float64{}
+	if repo, ok := s.repo.(interface {
+		MonitorUsageCacheRates(context.Context, []int64, time.Time) (map[int64]float64, error)
+	}); ok {
+		readCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		var err error
+		rates, err = repo.MonitorUsageCacheRates(readCtx, ids, time.Now())
+		if err != nil {
+			slog.Warn("channel_monitor: usage cache rate unavailable", "error", err)
+			rates = nil
+		}
+	}
 	for _, id := range ids {
 		out[id] = buildStatusSummary(
 			indexLatestByModel(latestMap[id]),
@@ -44,6 +58,11 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 			primaryByID[id],
 			extrasByID[id],
 		)
+		if rate, ok := rates[id]; ok {
+			summary := out[id]
+			summary.CacheRate24h = &rate
+			out[id] = summary
+		}
 	}
 	return out
 }
@@ -237,6 +256,7 @@ func buildUserViewFromSummary(
 		GroupName:        m.GroupName,
 		PrimaryModel:     m.PrimaryModel,
 		PrimaryStatus:    summary.PrimaryStatus,
+		CacheRate24h:     summary.CacheRate24h,
 		PrimaryLatencyMs: summary.PrimaryLatencyMs,
 		Availability7d:   summary.Availability7d,
 		ExtraModels:      summary.ExtraModels,

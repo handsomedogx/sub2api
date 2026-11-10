@@ -35,11 +35,23 @@ const (
 	pelicanErrRefused      = "Model refused the request"
 )
 
-func (s *AccountTestService) RunPelicanBackground(ctx context.Context, accountID int64, model string, cfg *PelicanTestConfig) (*ScheduledTestResult, error) {
+func (s *AccountTestService) RunPelicanBackground(ctx context.Context, accountID int64, model string, cfg *PelicanTestConfig) (result *ScheduledTestResult, resultErr error) {
 	ctx = context.WithValue(ctx, qualityProbeContextKey{}, true)
 	// 探针题型不下发题目，直接走门票探针。
 	if isOpenAICodexStateProbePlan(cfg) {
 		return s.runOpenAICodexStateProbeScheduled(ctx, accountID, model, cfg)
+	}
+	// Group attempts already own a collector and are persisted by runSample.
+	// Account-only scheduled intelligence tests need their own snapshot.
+	ctx, finishCost := s.startAccountCostSnapshot(ctx, accountID, model)
+	if finishCost != nil {
+		defer func() {
+			status := "interrupted"
+			if result != nil {
+				status = result.Status
+			}
+			finishCost(status)
+		}()
 	}
 	// Recognize the exact built-in question in legacy HTML plans as well.
 	if isBuiltinCandyPlan(cfg) {

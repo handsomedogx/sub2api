@@ -15035,6 +15035,8 @@ type ChannelMonitorMutation struct {
 	name                    *string
 	provider                *channelmonitor.Provider
 	check_mode              *string
+	group_id                *int64
+	addgroup_id             *int64
 	account_id              *int64
 	addaccount_id           *int64
 	api_mode                *string
@@ -15345,6 +15347,76 @@ func (m *ChannelMonitorMutation) OldCheckMode(ctx context.Context) (v string, er
 // ResetCheckMode resets all changes to the "check_mode" field.
 func (m *ChannelMonitorMutation) ResetCheckMode() {
 	m.check_mode = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *ChannelMonitorMutation) SetGroupID(i int64) {
+	m.group_id = &i
+	m.addgroup_id = nil
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *ChannelMonitorMutation) GroupID() (r int64, exists bool) {
+	v := m.group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// AddGroupID adds i to the "group_id" field.
+func (m *ChannelMonitorMutation) AddGroupID(i int64) {
+	if m.addgroup_id != nil {
+		*m.addgroup_id += i
+	} else {
+		m.addgroup_id = &i
+	}
+}
+
+// AddedGroupID returns the value that was added to the "group_id" field in this mutation.
+func (m *ChannelMonitorMutation) AddedGroupID() (r int64, exists bool) {
+	v := m.addgroup_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (m *ChannelMonitorMutation) ClearGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+	m.clearedFields[channelmonitor.FieldGroupID] = struct{}{}
+}
+
+// GroupIDCleared returns if the "group_id" field was cleared in this mutation.
+func (m *ChannelMonitorMutation) GroupIDCleared() bool {
+	_, ok := m.clearedFields[channelmonitor.FieldGroupID]
+	return ok
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *ChannelMonitorMutation) ResetGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+	delete(m.clearedFields, channelmonitor.FieldGroupID)
 }
 
 // SetAccountID sets the "account_id" field.
@@ -16266,7 +16338,7 @@ func (m *ChannelMonitorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 22)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitor.FieldCreatedAt)
 	}
@@ -16281,6 +16353,9 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	}
 	if m.check_mode != nil {
 		fields = append(fields, channelmonitor.FieldCheckMode)
+	}
+	if m.group_id != nil {
+		fields = append(fields, channelmonitor.FieldGroupID)
 	}
 	if m.account_id != nil {
 		fields = append(fields, channelmonitor.FieldAccountID)
@@ -16348,6 +16423,8 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.Provider()
 	case channelmonitor.FieldCheckMode:
 		return m.CheckMode()
+	case channelmonitor.FieldGroupID:
+		return m.GroupID()
 	case channelmonitor.FieldAccountID:
 		return m.AccountID()
 	case channelmonitor.FieldAPIMode:
@@ -16399,6 +16476,8 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldProvider(ctx)
 	case channelmonitor.FieldCheckMode:
 		return m.OldCheckMode(ctx)
+	case channelmonitor.FieldGroupID:
+		return m.OldGroupID(ctx)
 	case channelmonitor.FieldAccountID:
 		return m.OldAccountID(ctx)
 	case channelmonitor.FieldAPIMode:
@@ -16474,6 +16553,13 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCheckMode(v)
+		return nil
+	case channelmonitor.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
 		return nil
 	case channelmonitor.FieldAccountID:
 		v, ok := value.(int64)
@@ -16595,6 +16681,9 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *ChannelMonitorMutation) AddedFields() []string {
 	var fields []string
+	if m.addgroup_id != nil {
+		fields = append(fields, channelmonitor.FieldGroupID)
+	}
 	if m.addaccount_id != nil {
 		fields = append(fields, channelmonitor.FieldAccountID)
 	}
@@ -16615,6 +16704,8 @@ func (m *ChannelMonitorMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *ChannelMonitorMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case channelmonitor.FieldGroupID:
+		return m.AddedGroupID()
 	case channelmonitor.FieldAccountID:
 		return m.AddedAccountID()
 	case channelmonitor.FieldIntervalSeconds:
@@ -16632,6 +16723,13 @@ func (m *ChannelMonitorMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *ChannelMonitorMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case channelmonitor.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGroupID(v)
+		return nil
 	case channelmonitor.FieldAccountID:
 		v, ok := value.(int64)
 		if !ok {
@@ -16668,6 +16766,9 @@ func (m *ChannelMonitorMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *ChannelMonitorMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(channelmonitor.FieldGroupID) {
+		fields = append(fields, channelmonitor.FieldGroupID)
+	}
 	if m.FieldCleared(channelmonitor.FieldAccountID) {
 		fields = append(fields, channelmonitor.FieldAccountID)
 	}
@@ -16697,6 +16798,9 @@ func (m *ChannelMonitorMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *ChannelMonitorMutation) ClearField(name string) error {
 	switch name {
+	case channelmonitor.FieldGroupID:
+		m.ClearGroupID()
+		return nil
 	case channelmonitor.FieldAccountID:
 		m.ClearAccountID()
 		return nil
@@ -16734,6 +16838,9 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 		return nil
 	case channelmonitor.FieldCheckMode:
 		m.ResetCheckMode()
+		return nil
+	case channelmonitor.FieldGroupID:
+		m.ResetGroupID()
 		return nil
 	case channelmonitor.FieldAccountID:
 		m.ResetAccountID()

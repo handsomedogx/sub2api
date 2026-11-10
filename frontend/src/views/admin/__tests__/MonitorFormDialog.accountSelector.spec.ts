@@ -109,7 +109,7 @@ function makeMonitor(overrides: Partial<ChannelMonitor> = {}): ChannelMonitor {
 
 let unmountWrapper: (() => void) | undefined
 
-function mountDialog(monitor: ChannelMonitor | null = null) {
+async function mountDialog(monitor: ChannelMonitor | null = null) {
   const wrapper = mount(MonitorFormDialog, {
     props: { show: true, monitor },
     global: {
@@ -122,7 +122,9 @@ function mountDialog(monitor: ChannelMonitor | null = null) {
       },
     },
   })
+  if (!monitor) wrapper.findComponent('[data-testid="monitor-probe-source"]').vm.$emit('update:modelValue', 'external')
   unmountWrapper = () => wrapper.unmount()
+  await nextTick()
   return wrapper
 }
 
@@ -172,7 +174,7 @@ describe('MonitorFormDialog linked account selector', () => {
 
   it('loads the first page of provider accounts when quota mode is enabled', async () => {
     accountsList.mockResolvedValue({ items: [{ id: 1, name: 'a', platform: 'anthropic' }] })
-    const wrapper = mountDialog()
+    const wrapper = await mountDialog()
     await flushPromises()
     expect(accountsList).not.toHaveBeenCalled()
 
@@ -190,7 +192,7 @@ describe('MonitorFormDialog linked account selector', () => {
 
   it('debounced typing hits server-side search and aborts the previous request', async () => {
     vi.useFakeTimers()
-    const wrapper = mountDialog()
+    const wrapper = await mountDialog()
     await wrapper.get('[data-testid="monitor-check-mode-quota"]').trigger('click')
     await vi.advanceTimersByTimeAsync(0)
 
@@ -210,7 +212,7 @@ describe('MonitorFormDialog linked account selector', () => {
   it('hydrates a bound account missing from the first page and keeps the binding', async () => {
     accountsList.mockResolvedValue({ items: [{ id: 1, name: 'first page account', platform: 'anthropic' }] })
     accountsGetById.mockResolvedValue({ id: 999, name: 'hidden gem', platform: 'anthropic' })
-    const wrapper = mountDialog(makeMonitor({
+    const wrapper = await mountDialog(makeMonitor({
       provider: 'anthropic',
       check_mode: 'quota',
       account_id: 999,
@@ -229,7 +231,7 @@ describe('MonitorFormDialog linked account selector', () => {
 
   it('clears the binding with a visible hint when the bound account cannot be loaded', async () => {
     accountsGetById.mockRejectedValue(new Error('gone'))
-    const wrapper = mountDialog(makeMonitor({
+    const wrapper = await mountDialog(makeMonitor({
       provider: 'anthropic',
       check_mode: 'quota',
       account_id: 999,
@@ -247,7 +249,7 @@ describe('MonitorFormDialog linked account selector', () => {
   })
 
   it('shows the OpenAI codex probe hint only in quota mode on openai', async () => {
-    const wrapper = mountDialog()
+    const wrapper = await mountDialog()
     await flushPromises()
     expect(wrapper.text()).not.toContain('openAIQuotaProbeHint')
 
@@ -269,7 +271,7 @@ describe('MonitorFormDialog linked account selector', () => {
         { id: 2, name: 'beta', platform: 'anthropic' },
       ] })
       .mockResolvedValueOnce({ items: [{ id: 2, name: 'beta', platform: 'anthropic' }] })
-    const wrapper = mountDialog()
+    const wrapper = await mountDialog()
     await wrapper.get('[data-testid="monitor-check-mode-quota"]').trigger('click')
     await vi.advanceTimersByTimeAsync(0)
 
@@ -293,7 +295,7 @@ describe('MonitorFormDialog linked account selector', () => {
 
   it('clears the account binding when the provider switches', async () => {
     accountsList.mockResolvedValue({ items: [{ id: 1, name: 'alpha', platform: 'anthropic' }] })
-    const wrapper = mountDialog()
+    const wrapper = await mountDialog()
     await wrapper.get('[data-testid="monitor-check-mode-quota"]').trigger('click')
     await flushPromises()
 
@@ -312,7 +314,7 @@ describe('MonitorFormDialog linked account selector', () => {
   // P2-7(b)：antigravity 强制的 quota 在切走时要对称还原，占位模型一并清掉。
   it('restores probe mode and clears the quota placeholder when switching away from antigravity', async () => {
     accountsGetById.mockRejectedValue(new Error('gone'))
-    const wrapper = mountDialog(makeMonitor({
+    const wrapper = await mountDialog(makeMonitor({
       provider: 'antigravity',
       check_mode: 'quota',
       account_id: 7,
@@ -341,7 +343,7 @@ describe('MonitorFormDialog linked account selector', () => {
   // P2-7(c)：update 切回 probe 显式发 account_id=0 解绑存量关联（null=不动）。
   it('unbinds the linked account with account_id=0 when a quota monitor switches back to probe', async () => {
     accountsGetById.mockRejectedValue(new Error('gone'))
-    const wrapper = mountDialog(makeMonitor({
+    const wrapper = await mountDialog(makeMonitor({
       provider: 'anthropic',
       check_mode: 'quota',
       account_id: 999,
@@ -360,7 +362,7 @@ describe('MonitorFormDialog linked account selector', () => {
 
   // P2-7(c)：create 绝不发 0（后端会把 0 存成 &0 触发外键违约），保持 null。
   it('keeps account_id null when creating a probe monitor', async () => {
-    const wrapper = mountDialog()
+    const wrapper = await mountDialog()
     await flushPromises()
 
     await wrapper.findAll('input[type="text"]')[0].setValue('my monitor')

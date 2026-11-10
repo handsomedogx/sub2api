@@ -32,6 +32,7 @@ const (
 
 // ChannelMonitor 渠道监控配置（service 层模型，不直接暴露 ent 类型）。
 type ChannelMonitor struct {
+	GroupID         *int64
 	ID              int64
 	Name            string
 	Provider        string
@@ -82,6 +83,7 @@ type ChannelMonitorListParams struct {
 
 // ChannelMonitorCreateParams 创建参数。
 type ChannelMonitorCreateParams struct {
+	GroupID          *int64
 	Name             string
 	Provider         string
 	APIMode          string
@@ -106,6 +108,7 @@ type ChannelMonitorCreateParams struct {
 
 // ChannelMonitorUpdateParams 更新参数（指针字段表示"未提供则不更新"）。
 type ChannelMonitorUpdateParams struct {
+	GroupID         *int64 // nil = unchanged; 0 = external probe
 	Name            *string
 	Provider        *string
 	APIMode         *string
@@ -146,6 +149,7 @@ type CheckResult struct {
 
 // UserMonitorView 用户只读视图：监控概览（含主模型最近状态 + 7d 可用率 + 附加模型最近状态）。
 type UserMonitorView struct {
+	CacheRate24h         *float64
 	ID                   int64
 	Name                 string
 	Provider             string
@@ -245,6 +249,7 @@ type ChannelMonitorAvailability struct {
 // PrimaryStatus / PrimaryLatencyMs 描述主模型最近状态；Availability7d 是主模型 7 天可用率；
 // ExtraModels 描述附加模型最近状态（用于 hover 展示）。
 type MonitorStatusSummary struct {
+	CacheRate24h     *float64
 	PrimaryStatus    string // 空字符串表示无历史
 	PrimaryLatencyMs *int
 	Availability7d   float64 // 0-100，无历史时为 0

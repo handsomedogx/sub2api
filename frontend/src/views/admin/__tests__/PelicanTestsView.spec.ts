@@ -62,6 +62,7 @@ const mountView = () => mount(PelicanTestsView, {
       RouterLink: RouterLinkStub,
       Icon: true,
       PlatformIcon: true,
+      GroupModelSelect: { props: ['modelValue', 'groupId'], emits: ['update:modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
       Select: SelectStub,
       Toggle: ToggleStub,
       VueDraggable: {

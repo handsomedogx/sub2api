@@ -1,5 +1,5 @@
 <template>
-  <div class="mt-3 flex items-end justify-between">
+  <div class="flex" :class="stacked ? 'flex-col items-start gap-2' : 'mt-3 items-end justify-between'">
     <div class="text-[11px] uppercase tracking-widest text-gray-400">
       {{ windowLabel }}
     </div>
@@ -33,6 +33,7 @@ const props = defineProps<{
   windowLabel: string
   value: number | null
   samplesLabel?: string
+  stacked?: boolean
 }>()
 
 const { t } = useI18n()

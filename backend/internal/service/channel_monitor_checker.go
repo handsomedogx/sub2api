@@ -342,7 +342,20 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
 	full := joinURL(endpoint, monitorRequestPath(provider, endpoint, adapter, model))
+	protocol := "chat"
+	if provider == MonitorProviderAnthropic {
+		protocol = "anthropic"
+	} else if provider == MonitorProviderGemini {
+		protocol = "gemini"
+	} else if apiMode == MonitorAPIModeResponses {
+		protocol = "openai"
+	}
+	usage := startPelicanTestUsage(ctx, protocol)
 	respBytes, status, err := postRawJSON(ctx, full, body, headers)
+	if usage != nil {
+		usage.read(string(respBytes))
+		usage.complete = err == nil && status >= 200 && status < 300
+	}
 	if err != nil {
 		return "", "", status, err
 	}

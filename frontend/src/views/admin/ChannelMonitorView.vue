@@ -128,6 +128,9 @@
             <span class="text-sm text-gray-900 dark:text-gray-100">{{ formatLatency(row.primary_latency_ms) }}</span>
           </template>
 
+          <template #cell-cache_rate_24h="{ row }">
+            <MonitorCacheRate :value="row.cache_rate_24h" />
+          </template>
           <template #cell-enabled="{ row }">
             <Toggle :modelValue="row.enabled" @update:modelValue="toggleEnabled(row)" />
           </template>
@@ -233,6 +236,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import MonitorCacheRate from '@/components/common/MonitorCacheRate.vue'
 import MonitorFiltersBar from '@/components/admin/monitor/MonitorFiltersBar.vue'
 import MonitorOrderDialog from '@/components/admin/monitor/MonitorOrderDialog.vue'
 import MonitorFormDialog from '@/components/admin/monitor/MonitorFormDialog.vue'
@@ -309,6 +313,7 @@ const columns = computed<Column[]>(() => [
   { key: 'provider', label: t('admin.channelMonitor.columns.provider'), sortable: false },
   { key: 'primary_model', label: t('admin.channelMonitor.columns.primaryModel'), sortable: false },
   { key: 'availability_7d', label: t('admin.channelMonitor.columns.availability7d'), sortable: false },
+  { key: 'cache_rate_24h', label: t('monitorCommon.cacheRate24h'), sortable: false },
   { key: 'latency', label: t('admin.channelMonitor.columns.latency'), sortable: false },
   { key: 'enabled', label: t('admin.channelMonitor.columns.enabled'), sortable: false },
   { key: 'actions', label: t('admin.channelMonitor.columns.actions'), sortable: false },

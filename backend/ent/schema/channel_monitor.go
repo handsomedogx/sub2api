@@ -36,7 +36,7 @@ func (ChannelMonitor) Fields() []ent.Field {
 			MaxLen(100),
 		field.Enum("provider").
 			Values("openai", "anthropic", "gemini", "grok",
-				"antigravity", "kimi", "zhipu", "deepseek", "minimax", "opencode_go"),
+				"antigravity", "kimi", "zhipu", "deepseek", "minimax", "opencode_go", "composite"),
 		// check_mode: 'probe' | 'quota' | 'quota_probe'
 		//   probe       - LLM 探活（默认，原有行为）
 		//   quota       - 仅查关联账号的用量/余额（零 LLM 成本；endpoint/api_key 可空）
@@ -49,6 +49,8 @@ func (ChannelMonitor) Fields() []ent.Field {
 		// account_id: 配额模式的数据源账号（复用账号侧用量服务，不直接对接上游）。
 		// 普通字段而非 edge（FK 由 SQL 迁移管理）；账号删除时数据库置空，
 		// 监控保留并报「账号未关联」。
+		// Keep the group ID after group removal so probes fail closed instead of switching to external credentials.
+		field.Int64("group_id").Optional().Nillable().Positive(),
 		field.Int64("account_id").
 			Optional().
 			Nillable(),

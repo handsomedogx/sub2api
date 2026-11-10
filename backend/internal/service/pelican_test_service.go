@@ -55,13 +55,30 @@ func isQualityObservation(ctx context.Context) bool {
 // TestPelicanAccountConnection is the dedicated account test path for the
 // Pelican UI. The existing /test endpoint deliberately keeps its historical
 // probe payload; only this endpoint opts into the user prompt and reasoning.
-func (s *AccountTestService) TestPelicanAccountConnection(c *gin.Context, accountID int64, modelID, prompt, reasoningEffort string) error {
+func (s *AccountTestService) TestPelicanAccountConnection(c *gin.Context, accountID int64, modelID, prompt, reasoningEffort string) (resultErr error) {
+	ctx, finishCost := s.startAccountCostSnapshot(c.Request.Context(), accountID, modelID)
+	completed := false
+	if finishCost != nil {
+		defer func() {
+			status := "interrupted"
+			if completed {
+				status = "success"
+				if resultErr != nil {
+					status = "failed"
+				}
+			}
+			finishCost(status)
+		}()
+	}
+	c.Request = c.Request.WithContext(ctx)
 	options, _ := pelicanTestOptionsFromContext(c.Request.Context())
 	options.prompt = strings.TrimSpace(prompt)
 	options.reasoningEffort = normalizePelicanReasoningEffort(reasoningEffort)
-	ctx := withPelicanTestOptions(c.Request.Context(), options)
+	ctx = withPelicanTestOptions(c.Request.Context(), options)
 	c.Request = c.Request.WithContext(ctx)
-	return s.TestAccountConnection(c, accountID, modelID, options.prompt, AccountTestModeDefault)
+	resultErr = s.TestAccountConnection(c, accountID, modelID, options.prompt, AccountTestModeDefault)
+	completed = true
+	return resultErr
 }
 
 func normalizePelicanReasoningEffort(value string) string {

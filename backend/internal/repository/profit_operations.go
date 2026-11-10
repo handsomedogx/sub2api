@@ -112,19 +112,41 @@ const profitOperationsCohort = `accounts_config AS (
 
 // Join the complete projection before applying the selected cohort. Joining only
 // cohort would turn every configured account outside it into account_missing.
-const profitOperationsBase = `WITH ` + profitOperationsCohort + `, scoped AS (
+const profitOperationsBase = `WITH ` + profitOperationsCohort + `, user_scoped AS (
  SELECT u.account_id,u.requested_model,u.model,u.upstream_model,u.total_cost,u.actual_cost,u.stream,u.first_token_ms,
  u.account_stats_cost,u.input_tokens,u.output_tokens,u.cache_read_tokens,u.cache_creation_tokens,u.duration_ms,u.billing_type,u.created_at,u.queue_timing,u.queue_wait_ms,
  COALESCE(c.key,'unknown:account_missing') AS upstream_key,
  COALESCE(c.attribution,'account_missing') AS attribution,c.name AS account_name,c.updated_at AS config_updated_at,c.deleted,c.multiplier,c.channel_id AS explicit_channel_id,c.channel_name,c.channel_code,c.channel_remark,c.channel_revision,c.assignment,COALESCE(c.cost_basis,'account_missing') AS cost_basis,
  COALESCE(NULLIF(u.requested_model,''),u.model) AS public_model,
- u.total_cost AS cost_base
+ u.total_cost AS cost_base,u.id::text AS id,'user'::text AS source,''::text AS kind,NULL::numeric AS cost_usd,false AS incomplete,
+ NULL::numeric AS cost_multiplier_snapshot,NULL::numeric AS standard_snapshot,'{}'::jsonb AS tokens,''::text AS status,0::bigint AS monitor_id
  FROM usage_logs u LEFT JOIN accounts_config c ON c.id=u.account_id
  WHERE u.created_at >= $1 AND u.created_at < $2 AND ($5::bigint=0 OR u.account_id=$5) AND ($11::bigint=0 OR c.id IN (SELECT id FROM cohort))
  AND ($4='' OR COALESCE(c.key,'unknown:account_missing')=$4) AND ($6::bigint=0 OR u.group_id=$6)
  AND ($7='' OR CASE $8 WHEN 'public' THEN COALESCE(NULLIF(u.requested_model,''),u.model) WHEN 'recorded' THEN u.model WHEN 'upstream' THEN u.upstream_model END=$7)
+ AND $12::text IN ('','all','user')
+), internal_scoped AS (
+ SELECT i.account_id,i.requested_model,i.model,i.model AS upstream_model,0::numeric AS total_cost,0::numeric AS actual_cost,false AS stream,NULL::bigint AS first_token_ms,
+ NULL::numeric AS account_stats_cost,0::bigint AS input_tokens,0::bigint AS output_tokens,0::bigint AS cache_read_tokens,0::bigint AS cache_creation_tokens,
+ NULL::bigint AS duration_ms,0::smallint AS billing_type,i.created_at,NULL::jsonb AS queue_timing,NULL::bigint AS queue_wait_ms,
+ COALESCE(c.key,CASE WHEN i.account_id=0 THEN 'unknown:unattributed_internal' ELSE 'unknown:account_missing' END) AS upstream_key,
+ COALESCE(c.attribution,'account_missing') AS attribution,c.name AS account_name,c.updated_at AS config_updated_at,c.deleted,c.multiplier,
+ c.channel_id AS explicit_channel_id,c.channel_name,c.channel_code,c.channel_remark,c.channel_revision,c.assignment,
+ CASE WHEN i.kind LIKE 'legacy_%' THEN 'legacy_internal_snapshot' ELSE 'internal_snapshot' END AS cost_basis,
+ COALESCE(NULLIF(i.requested_model,''),i.model) AS public_model,
+ NULL::numeric AS cost_base,i.id,i.source,i.kind,i.cost_usd,i.incomplete,i.cost_multiplier AS cost_multiplier_snapshot,i.standard_cost AS standard_snapshot,i.tokens,i.status,i.monitor_id
+ FROM internal_request_costs i LEFT JOIN accounts_config c ON c.id=i.account_id
+ WHERE i.created_at >= $1 AND i.created_at < $2 AND ($5::bigint=0 OR i.account_id=$5)
+ AND ($11::bigint=0 OR c.id IN (SELECT id FROM cohort))
+ AND ($4='' OR COALESCE(c.key,CASE WHEN i.account_id=0 THEN 'unknown:unattributed_internal' ELSE 'unknown:account_missing' END)=$4)
+ AND ($6::bigint=0 OR i.group_id=$6)
+ AND ($7='' OR CASE $8 WHEN 'public' THEN COALESCE(NULLIF(i.requested_model,''),i.model) ELSE i.model END=$7)
+ AND ($12::text IN ('','all','internal') OR $12=i.source)
+), scoped AS (
+ SELECT * FROM user_scoped UNION ALL SELECT * FROM internal_scoped
 ), priced AS (
- SELECT *,CASE WHEN cost_base>=0 AND cost_base<'Infinity'::numeric AND multiplier>=0 AND multiplier<'Infinity'::numeric THEN cost_base*multiplier END AS estimated,
+ SELECT *,CASE WHEN source<>'user' THEN CASE WHEN NOT incomplete THEN cost_usd END
+ WHEN cost_base>=0 AND cost_base<'Infinity'::numeric AND multiplier>=0 AND multiplier<'Infinity'::numeric THEN cost_base*multiplier END AS estimated,
  CASE WHEN total_cost>=0 AND total_cost<'Infinity'::numeric THEN total_cost END AS standard,
  CASE WHEN actual_cost>=0 AND actual_cost<'Infinity'::numeric THEN actual_cost END AS income,
  CASE WHEN stream AND first_token_ms>0 AND (actual_cost>0 OR total_cost>0 OR account_stats_cost>0 OR input_tokens>0 OR output_tokens>0 OR cache_read_tokens>0 OR cache_creation_tokens>0) THEN first_token_ms END AS ttft,
@@ -132,7 +154,15 @@ const profitOperationsBase = `WITH ` + profitOperationsCohort + `, scoped AS (
  FROM scoped
 )`
 
-var profitOperationsAggregate = `count(*) AS requests,
+// Synthetic expenses must not inflate customer traffic or unknown timing counts.
+var profitOperationsAggregate = `count(*) FILTER(WHERE source='user') AS requests,
+ count(*) FILTER(WHERE source<>'user') AS internal_requests,
+ count(*) FILTER(WHERE source<>'user' AND (incomplete OR cost_usd IS NULL)) AS unknown_internal_requests,
+ COALESCE(sum(cost_usd) FILTER(WHERE source<>'user'),0) AS covered_internal_cost,
+ CASE WHEN count(*) FILTER(WHERE source='user' AND estimated IS NULL)=0 THEN COALESCE(sum(estimated) FILTER(WHERE source='user'),0) END AS user_request_cost,
+ CASE WHEN count(*) FILTER(WHERE source='pelican' AND estimated IS NULL)=0 THEN COALESCE(sum(estimated) FILTER(WHERE source='pelican'),0) END AS pelican_cost,
+ CASE WHEN count(*) FILTER(WHERE source='monitor' AND estimated IS NULL)=0 THEN COALESCE(sum(estimated) FILTER(WHERE source='monitor'),0) END AS monitor_cost,
+ CASE WHEN count(*) FILTER(WHERE source<>'user' AND estimated IS NULL)=0 THEN COALESCE(sum(estimated) FILTER(WHERE source<>'user'),0) END AS internal_cost,
  CASE WHEN count(*)=0 THEN 0 WHEN count(standard)=count(*) THEN sum(standard) END AS standard_charge,
  CASE WHEN count(*)=0 THEN 0 WHEN count(income)=count(*) THEN sum(income) END AS request_income,
  count(*) FILTER(WHERE standard IS NULL) AS unknown_standard_requests,
@@ -142,24 +172,24 @@ var profitOperationsAggregate = `count(*) AS requests,
  CASE WHEN count(estimated)=count(*) AND count(income)=count(*) AND sum(income)>0 THEN (sum(income)-sum(estimated))/sum(income) END AS margin,
  sum(estimated) AS covered_estimated_cost,
  sum(income) FILTER(WHERE estimated IS NOT NULL) AS covered_income,
- count(estimated) AS cost_covered_requests,count(*) FILTER(WHERE estimated IS NULL) AS unknown_cost_requests,
+ count(estimated) FILTER(WHERE source='user') AS cost_covered_requests,count(*) FILTER(WHERE source='user' AND estimated IS NULL) AS unknown_cost_requests,
  count(*) FILTER(WHERE attribution IN ('current_config','current_explicit_channel')) AS attributed_requests,
  count(*) FILTER(WHERE attribution NOT IN ('current_config','current_explicit_channel')) AS unknown_upstream_requests,
  count(*) FILTER(WHERE cost_basis='current_saved_multiplier') AS saved_multiplier_requests,
  count(*) FILTER(WHERE cost_basis='current_default_0.1') AS default_multiplier_requests,
  count(*) FILTER(WHERE account_stats_cost IS NOT NULL) AS saved_stats_base_requests,
- count(*) FILTER(WHERE account_stats_cost IS NULL) AS standard_base_fallback_requests,
+ count(*) FILTER(WHERE source='user' AND account_stats_cost IS NULL) AS standard_base_fallback_requests,
  count(*) FILTER(WHERE billing_type=1) AS subscription_requests,
  count(*) FILTER(WHERE deleted) AS deleted_account_requests,
  count(*) FILTER(WHERE ttft IS NOT NULL) AS samples,
  count(*) FILTER(WHERE stream AND ttft IS NULL) AS unknown_samples,
- count(*) FILTER(WHERE actual_cost=0 AND total_cost=0 AND COALESCE(account_stats_cost,0)=0 AND input_tokens=0 AND output_tokens=0 AND cache_read_tokens=0 AND cache_creation_tokens=0) AS unmetered_zero_records,
+ count(*) FILTER(WHERE source='user' AND actual_cost=0 AND total_cost=0 AND COALESCE(account_stats_cost,0)=0 AND input_tokens=0 AND output_tokens=0 AND cache_read_tokens=0 AND cache_creation_tokens=0) AS unmetered_zero_records,
  percentile_cont(.5) WITHIN GROUP(ORDER BY ttft) AS p50_ms,
  percentile_cont(.9) WITHIN GROUP(ORDER BY ttft) AS p90_ms,
  percentile_cont(.95) WITHIN GROUP(ORDER BY ttft) AS p95_ms,
  percentile_cont(.9) WITHIN GROUP(ORDER BY measured_duration) AS duration_p90_ms,
  max(created_at) AS latest_sample_at,min(config_updated_at) AS oldest_config_updated_at,max(config_updated_at) AS latest_config_updated_at,
- jsonb_agg(DISTINCT cost_basis) AS cost_bases` + queueInclusiveOperationsAggregate("measured_duration")
+ jsonb_agg(DISTINCT cost_basis) AS cost_bases` + strings.ReplaceAll(queueInclusiveOperationsAggregate("measured_duration"), "FILTER(WHERE ", "FILTER(WHERE source='user' AND ")
 
 func (r *channelRepository) ReadProfitOperations(ctx context.Context, f service.UpstreamOperationsFilter) (*service.ProfitOperationsSnapshot, error) {
 	if err := service.NormalizeProfitOperationsFilter(&f); err != nil {
@@ -175,13 +205,14 @@ func (r *channelRepository) ReadProfitOperations(ctx context.Context, f service.
 		return nil, err
 	}
 	args := []any{f.From, f.Until, string(raw), f.Upstream, f.AccountID, f.GroupID, f.Model, f.ModelScope, f.PageSize, (f.Page - 1) * f.PageSize, f.ChannelID}
+	usageArgs := append(append([]any{}, args...), f.Source)
 	dimension, name := `upstream_key`, `COALESCE(NULLIF(max(channel_name),''),upstream_key)`
 	channelFields := `,COALESCE(max(explicit_channel_id),0) AS channel_id,max(channel_code) AS channel_code,max(channel_remark) AS channel_remark,max(channel_revision) AS channel_revision,COALESCE(max(assignment),'unbound_unknown') AS assignment`
 	switch f.Dimension {
 	case "account":
 		channelFields = ""
 		dimension = `account_id::text`
-		name = `COALESCE(max(account_name),'Deleted account') || ' #' || account_id::text`
+		name = `CASE WHEN min(account_id)=0 THEN 'Unattributed internal requests' ELSE COALESCE(max(account_name),'Deleted account') || ' #' || min(account_id)::text END`
 	case "model":
 		channelFields = ""
 		dimension = `CASE $8 WHEN 'public' THEN public_model WHEN 'recorded' THEN model WHEN 'upstream' THEN COALESCE(upstream_model,'(unknown upstream model)') END`
@@ -199,12 +230,15 @@ func (r *channelRepository) ReadProfitOperations(ctx context.Context, f service.
  'capacity',(SELECT jsonb_build_object('accounts',count(*),'schedulable',count(*) FILTER(WHERE schedulable AND status='active'),'configured_concurrency',COALESCE(sum(concurrency),0)) FROM cohort c WHERE NOT deleted AND ($6::bigint=0 OR EXISTS(SELECT 1 FROM account_groups ag WHERE ag.account_id=c.id AND ag.group_id=$6))),
  'catalog_total',(SELECT count(DISTINCT key) FROM cohort c WHERE NOT deleted AND ($6::bigint=0 OR EXISTS(SELECT 1 FROM account_groups ag WHERE ag.account_id=c.id AND ag.group_id=$6))),
  'account_details_limit',100,'historical_upstream_snapshot_requests',0,'historical_cost_multiplier_snapshot_requests',0,
- 'cost_formula','usage_logs.total_cost * current extra.cost_multiplier; missing multiplier uses scheduling default 0.1',
+ 'internal_records',COALESCE((SELECT jsonb_agg(to_jsonb(d)) FROM (SELECT id,source,kind,account_id,monitor_id,requested_model,model,tokens,standard_snapshot AS standard_cost,cost_multiplier_snapshot AS cost_multiplier,cost_usd,incomplete,status,created_at FROM internal_scoped ORDER BY created_at DESC,id DESC LIMIT $9 OFFSET $10)d),'[]'::jsonb),
+ 'internal_records_total',(SELECT count(*) FROM internal_scoped),
+ 'internal_history_note','Retained legacy history only; unrecorded/deleted history cannot be reconstructed. Snapshot costs are not revalued. Unattributed and partial costs remain unknown.',
+ 'cost_formula','customer usage total_cost * current extra.cost_multiplier + internal request cost snapshots; incomplete internal costs make totals unknown',
  'income_source','persisted usage_logs.actual_cost; subscription usage valuation, not cash receipts; no guarantee of debit in simple mode',
  'standard_source','persisted usage_logs.total_cost; historical model/cache/per-request pricing is not recalculated',
  'account_rate_multiplier_used',false,'error_rate',NULL)`
 	out := &service.ProfitOperationsSnapshot{UpstreamOperationsSnapshot: service.UpstreamOperationsSnapshot{Scope: f, QueriedAt: time.Now().UTC(), Attribution: "current_explicit_binding_or_url_config_estimate_not_historical_routing_no_procurement_snapshot"}, Currency: "USD billing units (no per-row currency snapshot)"}
-	if err = tx.QueryRowContext(ctx, query, args...).Scan(&out.Usage); err != nil {
+	if err = tx.QueryRowContext(ctx, query, usageArgs...).Scan(&out.Usage); err != nil {
 		return nil, fmt.Errorf("read upstream usage: %w", err)
 	}
 	profitErrors := strings.Replace(upstreamOperationsErrors, upstreamOperationsCohort, profitOperationsCohort, 1)

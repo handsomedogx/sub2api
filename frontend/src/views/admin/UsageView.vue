@@ -2,14 +2,14 @@
   <AppLayout>
     <div class="space-y-6">
       <UsageStatsCards
-        v-if="activeTab !== 'traffic'"
+        v-if="activeTab !== 'traffic' && activeTab !== 'internal'"
         :stats="usageStats"
         show-rate
         :rate-window="usageStatsWindow"
         :notice-user-id="props.observerMode ? undefined : authStore.user?.id"
       />
       <!-- Charts Section -->
-      <div v-if="activeTab !== 'traffic'" class="space-y-4">
+      <div v-if="activeTab !== 'traffic' && activeTab !== 'internal'" class="space-y-4">
         <div class="card p-4">
           <div class="flex flex-wrap items-center gap-4">
             <div class="flex items-center gap-2">
@@ -94,7 +94,7 @@
           </button>
         </div>
 
-        <UsageFilters v-if="activeTab !== 'traffic'" v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
+        <UsageFilters v-if="activeTab !== 'traffic' && activeTab !== 'internal'" v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
           <template #after-reset>
             <div v-if="activeTab === 'usage' || activeTab === 'errors'" class="relative" ref="columnDropdownRef">
               <button
@@ -172,6 +172,7 @@
           :filters="connectionFilters"
           :refresh-key="connectionRefreshKey"
         />
+        <InternalRequestCosts v-if="!props.observerMode && activeTab === 'internal'" />
         <TrafficPanel v-if="!props.observerMode && activeTab === 'traffic'" admin />
         <LatencyObservabilityPanel
           v-if="!props.observerMode && activeTab === 'latency'"
@@ -236,6 +237,7 @@ import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usag
 import { resolveUsageStatsWindow, type UsageRateWindow } from '@/utils/usageRate'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
+import InternalRequestCosts from '@/components/admin/usage/InternalRequestCosts.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
 import UsageConnections from '@/components/admin/usage/UsageConnections.vue'
 import LatencyObservabilityPanel from '@/components/admin/usage/LatencyObservabilityPanel.vue'
@@ -885,7 +887,7 @@ const loadSavedColumns = () => {
 }
 
 // Detail tabs
-type DetailTab = 'usage' | 'errors' | 'connections' | 'ranking' | 'traffic' | 'latency'
+type DetailTab = 'usage' | 'errors' | 'connections' | 'ranking' | 'traffic' | 'latency' | 'internal'
 const activeTab = ref<DetailTab>('usage')
 const canViewErrors = computed(() => !props.observerMode || !!appStore.cachedPublicSettings?.allow_user_view_error_requests)
 const detailTabs = computed(() => [
@@ -895,6 +897,7 @@ const detailTabs = computed(() => [
   ...(!props.observerMode ? [{ key: 'ranking' as const, label: t('usage.tabs.ranking'), icon: 'chart' as const }] : []),
   ...(!props.observerMode ? [{ key: 'traffic' as const, label: t('traffic.title'), icon: 'chart' as const }] : []),
   ...(!props.observerMode ? [{ key: 'latency' as const, label: t('latencyObservability.title'), icon: 'clock' as const }] : []),
+  ...(!props.observerMode ? [{ key: 'internal' as const, label: t('profitOps.internalTitle'), icon: 'document' as const }] : []),
 ])
 const usageFiltersRef = ref<InstanceType<typeof UsageFilters> | null>(null)
 const connectionRefreshKey = ref(0)

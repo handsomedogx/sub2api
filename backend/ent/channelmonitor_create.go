@@ -79,6 +79,20 @@ func (_c *ChannelMonitorCreate) SetNillableCheckMode(v *string) *ChannelMonitorC
 	return _c
 }
 
+// SetGroupID sets the "group_id" field.
+func (_c *ChannelMonitorCreate) SetGroupID(v int64) *ChannelMonitorCreate {
+	_c.mutation.SetGroupID(v)
+	return _c
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableGroupID(v *int64) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetGroupID(*v)
+	}
+	return _c
+}
+
 // SetAccountID sets the "account_id" field.
 func (_c *ChannelMonitorCreate) SetAccountID(v int64) *ChannelMonitorCreate {
 	_c.mutation.SetAccountID(v)
@@ -397,6 +411,11 @@ func (_c *ChannelMonitorCreate) check() error {
 			return &ValidationError{Name: "check_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.check_mode": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.GroupID(); ok {
+		if err := channelmonitor.GroupIDValidator(v); err != nil {
+			return &ValidationError{Name: "group_id", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.group_id": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.APIMode(); !ok {
 		return &ValidationError{Name: "api_mode", err: errors.New(`ent: missing required field "ChannelMonitor.api_mode"`)}
 	}
@@ -516,6 +535,10 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 	if value, ok := _c.mutation.CheckMode(); ok {
 		_spec.SetField(channelmonitor.FieldCheckMode, field.TypeString, value)
 		_node.CheckMode = value
+	}
+	if value, ok := _c.mutation.GroupID(); ok {
+		_spec.SetField(channelmonitor.FieldGroupID, field.TypeInt64, value)
+		_node.GroupID = &value
 	}
 	if value, ok := _c.mutation.AccountID(); ok {
 		_spec.SetField(channelmonitor.FieldAccountID, field.TypeInt64, value)
@@ -723,6 +746,30 @@ func (u *ChannelMonitorUpsert) SetCheckMode(v string) *ChannelMonitorUpsert {
 // UpdateCheckMode sets the "check_mode" field to the value that was provided on create.
 func (u *ChannelMonitorUpsert) UpdateCheckMode() *ChannelMonitorUpsert {
 	u.SetExcluded(channelmonitor.FieldCheckMode)
+	return u
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *ChannelMonitorUpsert) SetGroupID(v int64) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldGroupID, v)
+	return u
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateGroupID() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldGroupID)
+	return u
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *ChannelMonitorUpsert) AddGroupID(v int64) *ChannelMonitorUpsert {
+	u.Add(channelmonitor.FieldGroupID, v)
+	return u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *ChannelMonitorUpsert) ClearGroupID() *ChannelMonitorUpsert {
+	u.SetNull(channelmonitor.FieldGroupID)
 	return u
 }
 
@@ -1070,6 +1117,34 @@ func (u *ChannelMonitorUpsertOne) SetCheckMode(v string) *ChannelMonitorUpsertOn
 func (u *ChannelMonitorUpsertOne) UpdateCheckMode() *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateCheckMode()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *ChannelMonitorUpsertOne) SetGroupID(v int64) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *ChannelMonitorUpsertOne) AddGroupID(v int64) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.AddGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateGroupID() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *ChannelMonitorUpsertOne) ClearGroupID() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.ClearGroupID()
 	})
 }
 
@@ -1624,6 +1699,34 @@ func (u *ChannelMonitorUpsertBulk) SetCheckMode(v string) *ChannelMonitorUpsertB
 func (u *ChannelMonitorUpsertBulk) UpdateCheckMode() *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateCheckMode()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *ChannelMonitorUpsertBulk) SetGroupID(v int64) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *ChannelMonitorUpsertBulk) AddGroupID(v int64) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.AddGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateGroupID() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *ChannelMonitorUpsertBulk) ClearGroupID() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.ClearGroupID()
 	})
 }
 

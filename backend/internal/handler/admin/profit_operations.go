@@ -26,6 +26,7 @@ func (h *ChannelHandler) ProfitOperations(c *gin.Context) {
 		return
 	}
 	f := service.UpstreamOperationsFilter{From: from, Until: until, Upstream: c.Query("upstream"), ChannelID: channel, AccountID: account, GroupID: group, Model: c.Query("model"), ModelScope: c.DefaultQuery("model_scope", "public"), Dimension: c.DefaultQuery("dimension", "upstream"), Sort: c.DefaultQuery("sort", "requests"), Direction: c.DefaultQuery("direction", "desc"), Page: int(page), PageSize: int(size)}
+	f.Source = c.DefaultQuery("source", "all")
 	if err := service.NormalizeProfitOperationsFilter(&f); err != nil {
 		response.ErrorFrom(c, err)
 		return

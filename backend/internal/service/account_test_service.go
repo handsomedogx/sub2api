@@ -144,6 +144,8 @@ func normalizeGrokAccountTestMode(mode string) string {
 
 // AccountTestService handles account testing operations
 type AccountTestService struct {
+	internalCostBilling       *BillingService
+	internalCostWriter        InternalRequestCostWriter
 	astraGatewayActionMu      sync.Mutex
 	astraSetupMu              sync.Mutex
 	astraSetupCancel          context.CancelFunc

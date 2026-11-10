@@ -80,6 +80,33 @@ func (_u *ChannelMonitorUpdate) SetNillableCheckMode(v *string) *ChannelMonitorU
 	return _u
 }
 
+// SetGroupID sets the "group_id" field.
+func (_u *ChannelMonitorUpdate) SetGroupID(v int64) *ChannelMonitorUpdate {
+	_u.mutation.ResetGroupID()
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableGroupID(v *int64) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// AddGroupID adds value to the "group_id" field.
+func (_u *ChannelMonitorUpdate) AddGroupID(v int64) *ChannelMonitorUpdate {
+	_u.mutation.AddGroupID(v)
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *ChannelMonitorUpdate) ClearGroupID() *ChannelMonitorUpdate {
+	_u.mutation.ClearGroupID()
+	return _u
+}
+
 // SetAccountID sets the "account_id" field.
 func (_u *ChannelMonitorUpdate) SetAccountID(v int64) *ChannelMonitorUpdate {
 	_u.mutation.ResetAccountID()
@@ -499,6 +526,11 @@ func (_u *ChannelMonitorUpdate) check() error {
 			return &ValidationError{Name: "check_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.check_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.GroupID(); ok {
+		if err := channelmonitor.GroupIDValidator(v); err != nil {
+			return &ValidationError{Name: "group_id", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.group_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.APIMode(); ok {
 		if err := channelmonitor.APIModeValidator(v); err != nil {
 			return &ValidationError{Name: "api_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.api_mode": %w`, err)}
@@ -565,6 +597,15 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.CheckMode(); ok {
 		_spec.SetField(channelmonitor.FieldCheckMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GroupID(); ok {
+		_spec.SetField(channelmonitor.FieldGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedGroupID(); ok {
+		_spec.AddField(channelmonitor.FieldGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.GroupIDCleared() {
+		_spec.ClearField(channelmonitor.FieldGroupID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.AccountID(); ok {
 		_spec.SetField(channelmonitor.FieldAccountID, field.TypeInt64, value)
@@ -824,6 +865,33 @@ func (_u *ChannelMonitorUpdateOne) SetNillableCheckMode(v *string) *ChannelMonit
 	if v != nil {
 		_u.SetCheckMode(*v)
 	}
+	return _u
+}
+
+// SetGroupID sets the "group_id" field.
+func (_u *ChannelMonitorUpdateOne) SetGroupID(v int64) *ChannelMonitorUpdateOne {
+	_u.mutation.ResetGroupID()
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableGroupID(v *int64) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// AddGroupID adds value to the "group_id" field.
+func (_u *ChannelMonitorUpdateOne) AddGroupID(v int64) *ChannelMonitorUpdateOne {
+	_u.mutation.AddGroupID(v)
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *ChannelMonitorUpdateOne) ClearGroupID() *ChannelMonitorUpdateOne {
+	_u.mutation.ClearGroupID()
 	return _u
 }
 
@@ -1259,6 +1327,11 @@ func (_u *ChannelMonitorUpdateOne) check() error {
 			return &ValidationError{Name: "check_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.check_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.GroupID(); ok {
+		if err := channelmonitor.GroupIDValidator(v); err != nil {
+			return &ValidationError{Name: "group_id", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.group_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.APIMode(); ok {
 		if err := channelmonitor.APIModeValidator(v); err != nil {
 			return &ValidationError{Name: "api_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.api_mode": %w`, err)}
@@ -1342,6 +1415,15 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	}
 	if value, ok := _u.mutation.CheckMode(); ok {
 		_spec.SetField(channelmonitor.FieldCheckMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GroupID(); ok {
+		_spec.SetField(channelmonitor.FieldGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedGroupID(); ok {
+		_spec.AddField(channelmonitor.FieldGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.GroupIDCleared() {
+		_spec.ClearField(channelmonitor.FieldGroupID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.AccountID(); ok {
 		_spec.SetField(channelmonitor.FieldAccountID, field.TypeInt64, value)

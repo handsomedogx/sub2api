@@ -69,6 +69,7 @@ export function useChannelMonitorFormat() {
   }
 
   function providerLabel(p: Provider | string): string {
+ if(p==='composite') return t('monitorCommon.providers.composite')
     if (PROVIDERS.includes(p as Provider)) {
       return t(`monitorCommon.providers.${p}`)
     }

@@ -550,6 +550,20 @@ export default {
 
   // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
+    cacheRateShort: "Cache · 24h",
+    probeSource: "Test source",
+    groupSource: "Site group",
+    externalSource: "External URL / API key",
+    testGroup: "Test group",
+    chooseGroupFirst: "Select a group first",
+    groupProbeHint: "Uses group scheduling and account credentials. No URL or API key is needed. Probes consume a small amount of upstream usage.",
+    groupsLoadError: "Failed to load groups",
+    modelSelect: "Select a model",
+    modelsLoadError: "Failed to load models",
+    modelsEmpty: "No models available in this group",
+    modelUnavailable: "Currently unavailable",
+    cacheRate24h: "Cache rate · last 24h",
+    cacheRate24hHint: "From usage records for the linked group over the last 24 hours: cache-read tokens / (input + cache-read + cache-write tokens). No records, no prompt tokens, or no linked group shows —.",
     status: {
       operational: 'Operational',
       degraded: 'Degraded',
@@ -558,6 +572,7 @@ export default {
       unknown: '-'
     },
     providers: {
+      composite: 'Composite',
       openai: 'OpenAI',
       anthropic: 'Anthropic',
       gemini: 'Gemini',

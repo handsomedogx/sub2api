@@ -169,6 +169,7 @@ docs/*
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
+!docs/channel-monitor-v1-group-tests.md
 !docs/quality-bps-observation.md
 !docs/modeltrace-tests.md
 !docs/cyber-session-blocking.md

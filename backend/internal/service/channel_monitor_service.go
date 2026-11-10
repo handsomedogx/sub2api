@@ -72,6 +72,7 @@ type channelMonitorRuntimeReader interface {
 
 // ChannelMonitorService 渠道监控管理服务。
 type ChannelMonitorService struct {
+	groups    *PelicanGroupTestService
 	repo      ChannelMonitorRepository
 	encryptor SecretEncryptor
 	// settings is optional; when nil, RunCheck fails closed for active probes
@@ -148,6 +149,15 @@ func (s *ChannelMonitorService) Get(ctx context.Context, id int64) (*ChannelMoni
 
 // Create 创建监控（内部加密 api_key）。
 func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCreateParams) (*ChannelMonitor, error) {
+	if p.GroupID != nil {
+		target := &ChannelMonitor{GroupID: p.GroupID, CheckMode: p.CheckMode, PrimaryModel: strings.TrimSpace(p.PrimaryModel), ExtraModels: normalizeModels(p.ExtraModels), Enabled: p.Enabled}
+		if err := s.validateGroupMonitor(ctx, target); err != nil {
+			return nil, err
+		}
+		p.Provider, p.GroupName, p.Endpoint, p.APIKey, p.AccountID, p.TemplateID = target.Provider, target.GroupName, "", "", nil, nil
+		p.APIMode, p.ExtraHeaders, p.BodyOverrideMode, p.BodyOverride = target.APIMode, target.ExtraHeaders, target.BodyOverrideMode, target.BodyOverride
+	}
+
 	if err := validateCreateParams(p); err != nil {
 		return nil, err
 	}
@@ -166,6 +176,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		return nil, fmt.Errorf("encrypt api key: %w", err)
 	}
 	m := &ChannelMonitor{
+		GroupID:          cloneInt64Pointer(p.GroupID),
 		Name:             strings.TrimSpace(p.Name),
 		Provider:         p.Provider,
 		APIMode:          defaultAPIMode(p.APIMode),
@@ -233,6 +244,7 @@ func (s *ChannelMonitorService) Duplicate(
 	}
 
 	duplicate := &ChannelMonitor{
+		GroupID:              cloneInt64Pointer(source.GroupID),
 		Name:                 duplicateChannelMonitorName(source.Name),
 		Provider:             source.Provider,
 		APIMode:              source.APIMode,
@@ -301,6 +313,9 @@ func duplicateChannelMonitorOperationID(sourceID int64, actorScope, operationKey
 }
 
 func (s *ChannelMonitorService) decryptAPIKeyForDuplicate(source *ChannelMonitor) (string, error) {
+	if source != nil && source.GroupID != nil {
+		return "", nil
+	}
 	if source == nil || strings.TrimSpace(source.APIKey) == "" {
 		return "", ErrChannelMonitorAPIKeyDecryptFailed
 	}
@@ -376,7 +391,7 @@ func validateCreateParams(p ChannelMonitorCreateParams) error {
 		return err
 	}
 	checkMode := defaultCheckMode(p.CheckMode)
-	if err := validateCheckMode(p.Provider, checkMode); err != nil {
+	if err := validateCheckMode(p.Provider, checkMode); err != nil && p.GroupID == nil {
 		return err
 	}
 	if err := validateAPIMode(p.Provider, p.APIMode); err != nil {
@@ -391,7 +406,7 @@ func validateCreateParams(p ChannelMonitorCreateParams) error {
 	usesQuota := monitorCheckModeUsesQuota(checkMode)
 	// probe 分支（含 quota_probe 的探活部分）仍需 endpoint + api_key；
 	// quota 模式 endpoint/api_key 留空，避免要求用户填无意义的占位值。
-	if checkMode != MonitorCheckModeQuota {
+	if checkMode != MonitorCheckModeQuota && p.GroupID == nil {
 		if err := validateEndpoint(p.Endpoint); err != nil {
 			return err
 		}
@@ -438,6 +453,9 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 		return nil, err
 	}
 
+	if err := s.validateGroupMonitor(ctx, existing); err != nil {
+		return nil, err
+	}
 	newPlainAPIKey, apiKeyUpdated, err := s.applyAPIKeyUpdate(existing, p.APIKey)
 	if err != nil {
 		return nil, err
@@ -475,6 +493,12 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 //   - probe / quota_probe 必须持有 endpoint（探活目标）
 func validateMonitorModeFields(m *ChannelMonitor) error {
 	checkMode := defaultCheckMode(m.CheckMode)
+	if m.GroupID != nil {
+		if *m.GroupID <= 0 || checkMode != MonitorCheckModeProbe {
+			return ErrChannelMonitorInvalidCheckMode
+		}
+		return nil
+	}
 	if monitorCheckModeUsesQuota(checkMode) && m.AccountID == nil {
 		return ErrChannelMonitorAccountRequired
 	}
@@ -488,7 +512,7 @@ func validateMonitorModeFields(m *ChannelMonitor) error {
 // 存量密文解密为空串（quota 监控切回探活但未重填 key）时拒绝。
 // 密文损坏的情况交给既有 APIKeyDecryptFailed 链路（Get/RunCheck 会显式报错）。
 func (s *ChannelMonitorService) validateProbeAPIKey(m *ChannelMonitor, newPlainKey string) error {
-	if defaultCheckMode(m.CheckMode) == MonitorCheckModeQuota {
+	if m.GroupID != nil || defaultCheckMode(m.CheckMode) == MonitorCheckModeQuota {
 		return nil
 	}
 	if strings.TrimSpace(newPlainKey) != "" {
@@ -617,15 +641,17 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 		return nil, err
 	}
 	checkMode := defaultCheckMode(m.CheckMode)
-	if checkMode != MonitorCheckModeQuota && m.APIKeyDecryptFailed {
+	if m.GroupID == nil && checkMode != MonitorCheckModeQuota && m.APIKeyDecryptFailed {
 		return nil, ErrChannelMonitorAPIKeyDecryptFailed
 	}
 
 	var results []*CheckResult
-	switch checkMode {
-	case MonitorCheckModeQuota:
+	switch {
+	case m.GroupID != nil:
+		results = s.runGroupChecks(ctx, m)
+	case checkMode == MonitorCheckModeQuota:
 		results = s.runQuotaOnlyCheck(ctx, m)
-	case MonitorCheckModeQuotaProbe:
+	case checkMode == MonitorCheckModeQuotaProbe:
 		results = s.runChecksConcurrent(ctx, m)
 		attachQuotaSnapshot(results, s.fetchQuotaSnapshot(ctx, m))
 	default:
@@ -717,7 +743,17 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 	for i, model := range models {
 		i, model := i, model
 		eg.Go(func() error {
-			r := runCheckForModel(ctx, m.Provider, m.Endpoint, m.APIKey, model, opts)
+			started := time.Now()
+			usage := &pelicanTestUsageCollector{model: model}
+			r := runCheckForModel(context.WithValue(ctx, pelicanTestUsageKey{}, usage), m.Provider, m.Endpoint, m.APIKey, model, opts)
+			var billing *BillingService
+			if s.groups != nil {
+				billing = s.groups.billing
+			}
+			// A standalone endpoint/key cannot prove which local account paid for it.
+			// Preserve measured standard cost, but leave procurement cost unknown.
+			records := usage.costRecords(billing, nil, 0, model, 0, internalRequestOrigin{"monitor", "v1_endpoint", m.ID}, started, r.Status)
+			_ = persistInternalRequestCosts(ctx, s.repo, records)
 			r.PingLatencyMs = pingMs
 			mu.Lock()
 			results[i] = r
@@ -866,6 +902,11 @@ func (s *ChannelMonitorService) cleanupOldRollups(ctx context.Context, today tim
 // 解密失败时把字段清空 + 设置 APIKeyDecryptFailed=true（不返回错误，避免阻断列表渲染）。
 // runner / RunCheck 必须读取该标志位并拒绝执行检测。
 func (s *ChannelMonitorService) decryptInPlace(m *ChannelMonitor) {
+	if m != nil && m.GroupID != nil {
+		m.APIKey = ""
+		m.APIKeyDecryptFailed = false
+		return
+	}
 	if m == nil || m.APIKey == "" {
 		return
 	}
@@ -886,6 +927,16 @@ func (s *ChannelMonitorService) decryptInPlace(m *ChannelMonitor) {
 // 行数稍超过 30：这是逐字段平铺的 dispatcher，每个 if 都是 1-3 行的"非 nil 则覆盖"模式，
 // 拆分反而会增加跳转噪音、影响可读性，故保留为单函数。
 func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) error {
+	if p.GroupID != nil {
+		if *p.GroupID < 0 {
+			return ErrChannelMonitorInvalidCheckMode
+		}
+		if *p.GroupID == 0 {
+			existing.GroupID = nil
+		} else {
+			existing.GroupID = cloneInt64Pointer(p.GroupID)
+		}
+	}
 	providerChanged := false
 	if p.Name != nil {
 		existing.Name = strings.TrimSpace(*p.Name)
@@ -904,7 +955,7 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 	// （如把 probe 监控的 provider 改成 antigravity）也不得落库非法组合，否则
 	// 运行期恒 error。条件限定避免把存量非法行的 name/enabled-only 更新也判死
 	// （否则连改名/停用都无法操作）。
-	if p.Provider != nil || p.CheckMode != nil {
+	if (p.Provider != nil || p.CheckMode != nil) && existing.GroupID == nil {
 		if err := validateCheckMode(existing.Provider, defaultCheckMode(existing.CheckMode)); err != nil {
 			return err
 		}

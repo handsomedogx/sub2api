@@ -22,6 +22,7 @@ export interface MonitorTimelinePoint {
 }
 
 export interface UserMonitorView {
+  cache_rate_24h?: number | null
   id: number
   name: string
   provider: Provider

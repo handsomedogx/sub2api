@@ -14,6 +14,8 @@ import (
 //
 //nolint:gochecknoglobals // 静态查表，初始化后不变。
 var monitorProviders = map[string]struct{}{
+	PlatformComposite:          {},
+	PlatformOpenCodeGo:         {},
 	MonitorProviderOpenAI:      {},
 	MonitorProviderAnthropic:   {},
 	MonitorProviderGemini:      {},

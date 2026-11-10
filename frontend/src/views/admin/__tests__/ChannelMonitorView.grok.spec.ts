@@ -73,7 +73,7 @@ const BaseDialogStub = defineComponent({
 })
 
 function mountDialog() {
-  return mount(MonitorFormDialog, {
+  const wrapper = mount(MonitorFormDialog, {
     props: { show: true, monitor: null },
     global: {
       stubs: {
@@ -86,6 +86,8 @@ function mountDialog() {
       },
     },
   })
+  wrapper.findComponent('[data-testid="monitor-probe-source"]').vm.$emit('update:modelValue', 'external')
+  return wrapper
 }
 
 describe('channel monitor Grok provider', () => {

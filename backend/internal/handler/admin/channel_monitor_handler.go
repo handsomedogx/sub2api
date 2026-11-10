@@ -39,8 +39,9 @@ func NewChannelMonitorHandler(monitorService *service.ChannelMonitorService) *Ch
 // --- Request / Response ---
 
 type channelMonitorCreateRequest struct {
+	GroupID          *int64            `json:"group_id"`
 	Name             string            `json:"name" binding:"required,max=100"`
-	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini grok antigravity kimi zhipu deepseek minimax opencode_go"`
+	Provider         string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini grok antigravity kimi zhipu deepseek minimax opencode_go composite"`
 	APIMode          string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
 	Endpoint         string            `json:"endpoint" binding:"omitempty,max=500"`
 	APIKey           string            `json:"api_key" binding:"omitempty,max=2000"`
@@ -63,8 +64,9 @@ type channelMonitorCreateRequest struct {
 }
 
 type channelMonitorUpdateRequest struct {
+	GroupID          *int64             `json:"group_id"`
 	Name             *string            `json:"name" binding:"omitempty,max=100"`
-	Provider         *string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini grok antigravity kimi zhipu deepseek minimax opencode_go"`
+	Provider         *string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini grok antigravity kimi zhipu deepseek minimax opencode_go composite"`
 	APIMode          *string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
 	Endpoint         *string            `json:"endpoint" binding:"omitempty,max=500"`
 	APIKey           *string            `json:"api_key" binding:"omitempty,max=2000"`
@@ -86,6 +88,8 @@ type channelMonitorUpdateRequest struct {
 }
 
 type channelMonitorResponse struct {
+	CacheRate24h        *float64                             `json:"cache_rate_24h"`
+	GroupID             *int64                               `json:"group_id"`
 	ID                  int64                                `json:"id"`
 	Name                string                               `json:"name"`
 	Provider            string                               `json:"provider"`
@@ -163,6 +167,7 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 	}
 	resp := &channelMonitorResponse{
 		ID:                  m.ID,
+		GroupID:             m.GroupID,
 		Name:                m.Name,
 		Provider:            m.Provider,
 		APIMode:             m.APIMode,
@@ -291,6 +296,7 @@ func (h *ChannelMonitorHandler) batchSummaryFor(c *gin.Context, items []*service
 // buildListItemResponse 把 monitor + summary 装成 admin list 的响应行。
 func buildListItemResponse(m *service.ChannelMonitor, summary service.MonitorStatusSummary) *channelMonitorResponse {
 	resp := channelMonitorToResponse(m)
+	resp.CacheRate24h = summary.CacheRate24h
 	resp.PrimaryStatus = summary.PrimaryStatus
 	resp.PrimaryLatencyMs = summary.PrimaryLatencyMs
 	resp.Availability7d = summary.Availability7d
@@ -336,6 +342,7 @@ func (h *ChannelMonitorHandler) Create(c *gin.Context) {
 	}
 
 	m, err := h.monitorService.Create(c.Request.Context(), service.ChannelMonitorCreateParams{
+		GroupID:          req.GroupID,
 		Name:             req.Name,
 		Provider:         req.Provider,
 		APIMode:          req.APIMode,
@@ -432,6 +439,7 @@ func (h *ChannelMonitorHandler) Update(c *gin.Context) {
 	}
 
 	m, err := h.monitorService.Update(c.Request.Context(), id, service.ChannelMonitorUpdateParams{
+		GroupID:          req.GroupID,
 		Name:             req.Name,
 		Provider:         req.Provider,
 		APIMode:          req.APIMode,

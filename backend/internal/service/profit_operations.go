@@ -22,6 +22,12 @@ type ProfitOperationsRepository interface {
 }
 
 func ValidateProfitOperationsFilter(f UpstreamOperationsFilter) error {
+	if f.Upstream == "unknown:unattributed_internal" {
+		f.Upstream = ""
+	}
+	if !slices.Contains([]string{"", "all", "user", "internal", "pelican", "monitor"}, f.Source) {
+		return ErrUpstreamOperationsValidation
+	}
 	if !slices.Contains([]string{"requests", "standard_charge", "request_income", "estimated_cost", "estimated_profit", "margin", "name"}, f.Sort) {
 		return ErrUpstreamOperationsValidation
 	}

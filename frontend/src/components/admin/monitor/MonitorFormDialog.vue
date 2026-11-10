@@ -11,8 +11,18 @@
         <input v-model="form.name" type="text" required class="input" :placeholder="t('admin.channelMonitor.form.namePlaceholder')" />
       </div>
 
-      <!-- 检测模式：probe（探活）/ quota（仅配额）/ quota_probe（探活+配额） -->
       <div>
+        <label class="input-label">{{ t('monitorCommon.probeSource') }}</label>
+        <Select v-model="sourceMode" :options="sourceOptions" :aria-label="t('monitorCommon.probeSource')" data-testid="monitor-probe-source" />
+      </div>
+      <div v-if="sourceMode === 'group'">
+        <label class="input-label">{{ t('monitorCommon.testGroup') }} *</label>
+        <Select v-model="groupSelectValue" :options="groupOptions" searchable :loading="groupsLoading" :aria-label="t('monitorCommon.testGroup')" :placeholder="t('monitorCommon.chooseGroupFirst')" data-testid="monitor-group" />
+        <p class="mt-1 text-xs text-gray-500">{{ t('monitorCommon.groupProbeHint') }}</p>
+        <p v-if="groupsLoadFailed" class="mt-1 text-xs text-red-600" role="alert">{{ t('monitorCommon.groupsLoadError') }} <button type="button" class="underline" @click="loadGroups">{{ t('common.retry') }}</button></p>
+      </div>
+      <!-- 检测模式：probe（探活）/ quota（仅配额）/ quota_probe（探活+配额） -->
+      <div v-if="sourceMode === 'external'">
         <label class="input-label">{{ t('admin.channelMonitor.form.checkMode') }}</label>
         <div class="grid gap-3 sm:grid-cols-3" data-testid="monitor-check-mode">
           <button
@@ -32,7 +42,7 @@
         </div>
       </div>
 
-      <div>
+      <div v-if="sourceMode === 'external'">
         <label class="input-label">{{ t('admin.channelMonitor.form.provider') }} <span class="text-red-500">*</span></label>
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <button
@@ -78,7 +88,7 @@
         </p>
       </div>
 
-      <div v-if="form.provider === PROVIDER_OPENAI && usesProbePart" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+      <div v-if="form.provider === PROVIDER_OPENAI && usesExternalProbe" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
         <label class="input-label">{{ t('admin.channelMonitor.form.apiMode') }}</label>
         <div class="grid gap-3 sm:grid-cols-2">
           <button
@@ -96,7 +106,7 @@
         </div>
       </div>
 
-      <div v-if="usesProbePart">
+      <div v-if="usesExternalProbe">
         <label class="input-label">{{ t('admin.channelMonitor.form.endpoint') }} <span class="text-red-500">*</span></label>
         <div class="flex gap-2">
           <input v-model="form.endpoint" data-testid="monitor-endpoint" type="text" required class="input flex-1" :placeholder="t('admin.channelMonitor.form.endpointPlaceholder')" />
@@ -106,7 +116,7 @@
         </div>
       </div>
 
-      <div v-if="usesProbePart">
+      <div v-if="usesExternalProbe">
         <label class="input-label">
           {{ t('admin.channelMonitor.form.apiKey') }}<span v-if="!editing" class="text-red-500"> *</span>
         </label>
@@ -127,7 +137,8 @@
 
       <div v-if="usesProbePart">
         <label class="input-label">{{ t('admin.channelMonitor.form.primaryModel') }} <span class="text-red-500">*</span></label>
-        <input
+        <GroupModelSelect v-if="sourceMode === 'group'" v-model="form.primary_model" :group-id="form.group_id" data-testid="monitor-group-model" @loaded="groupModels = $event" />
+        <input v-else
           v-model="form.primary_model"
           data-testid="monitor-primary-model"
           type="text"
@@ -140,7 +151,11 @@
 
       <div v-if="usesProbePart">
         <label class="input-label">{{ t('admin.channelMonitor.form.extraModels') }}</label>
-        <ModelTagInput
+        <template v-if="sourceMode === 'group'">
+          <div class="mb-2 flex flex-wrap gap-2"><button v-for="model in form.extra_models" :key="model" type="button" class="rounded-md bg-gray-100 px-2 py-1 text-xs dark:bg-dark-700" @click="form.extra_models = form.extra_models.filter(m => m !== model)">{{ model }} ×</button></div>
+          <Select v-model="extraModelChoice" :options="extraModelOptions" searchable :disabled="!groupModels.length" :placeholder="t('monitorCommon.modelSelect')" data-testid="monitor-extra-group-model" />
+        </template>
+        <ModelTagInput v-else
           :models="form.extra_models"
           :platform="form.provider"
           :placeholder="t('admin.channelMonitor.form.extraModelsPlaceholder')"
@@ -148,7 +163,7 @@
         />
       </div>
 
-      <div>
+      <div v-if="sourceMode === 'external'">
         <label class="input-label">{{ t('admin.channelMonitor.form.groupName') }}</label>
         <input v-model="form.group_name" type="text" class="input" :placeholder="t('admin.channelMonitor.form.groupNamePlaceholder')" />
       </div>
@@ -171,7 +186,7 @@
       </div>
 
       <!-- 高级设置区：请求模板 + 自定义 headers/body（仅探活模式有意义） -->
-      <details v-if="usesProbePart" class="rounded-lg border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-700 dark:bg-dark-900/30">
+      <details v-if="usesExternalProbe" class="rounded-lg border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-700 dark:bg-dark-900/30">
         <summary class="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.channelMonitor.advanced.section') }}
         </summary>
@@ -234,6 +249,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
+import GroupModelSelect from '@/components/common/GroupModelSelect.vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -250,6 +266,7 @@ import type {
   UpdateParams,
 } from '@/api/admin/channelMonitor'
 import type { ChannelMonitorTemplate } from '@/api/admin/channelMonitorTemplate'
+import type { AdminGroup } from '@/types'
 import type { ApiKey } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -319,6 +336,7 @@ const myActiveKeys = ref<ApiKey[]>([])
 const userGroupRates = ref<Record<number, number>>({})
 
 interface MonitorForm {
+  group_id: number | null
   name: string
   provider: Provider
   api_mode: APIMode
@@ -340,6 +358,7 @@ interface MonitorForm {
 }
 
 const form = reactive<MonitorForm>({
+  group_id: null,
   name: '',
   provider: PROVIDER_ANTHROPIC,
   api_mode: API_MODE_CHAT_COMPLETIONS,
@@ -359,9 +378,83 @@ const form = reactive<MonitorForm>({
   body_override: null,
 })
 
+const sourceMode = ref<'group' | 'external'>('group')
+const sourceOptions = computed(() => [
+  { value: 'group', label: t('monitorCommon.groupSource') },
+  { value: 'external', label: t('monitorCommon.externalSource') },
+])
+const groups = ref<AdminGroup[]>([])
+const groupsLoading = ref(false)
+const groupsLoadFailed = ref(false)
+const groupModels = ref<string[]>([])
+const groupOptions = computed(() => {
+  const options = groups.value.map(g => ({ value: g.id, label: g.name }))
+  if (form.group_id && !options.some(o => o.value === form.group_id)) {
+    options.unshift({ value: form.group_id, label: props.monitor?.group_name || String(form.group_id) })
+  }
+  return options
+})
+const groupSelectValue = computed<number | string>({
+  get: () => form.group_id ?? '',
+  set: raw => {
+    const previousGroup = groups.value.find(g => g.id === form.group_id)
+    form.group_id = Number(raw) || null
+    form.primary_model = ''
+    form.extra_models = []
+    groupModels.value = []
+    const group = groups.value.find(g => g.id === form.group_id)
+    if (group) {
+      form.provider = group.platform as Provider
+      form.group_name = group.name
+      if (!form.name.trim() || form.name === previousGroup?.name) form.name = group.name
+    }
+  },
+})
+const extraModelOptions = computed(() => groupModels.value
+  .filter(model => model !== form.primary_model && !form.extra_models.includes(model))
+  .map(value => ({ value, label: value })))
+const extraModelChoice = computed({
+  get: () => '',
+  set: (model: string) => {
+    if (model && !form.extra_models.includes(model)) form.extra_models.push(model)
+  },
+})
+async function loadGroups() {
+  groupsLoading.value = true
+  groupsLoadFailed.value = false
+  try {
+    groups.value = (await adminAPI.groups.getAll()).filter(group => group.status === 'active')
+  } catch {
+    groupsLoadFailed.value = true
+  } finally {
+    groupsLoading.value = false
+  }
+}
+watch(() => [props.show, sourceMode.value] as const, ([show, source]) => {
+  if (show && source === 'group') void loadGroups()
+}, { immediate: true })
+watch(sourceMode, source => {
+  if (suppressFormWatchers) return
+  form.group_id = null
+  form.primary_model = ''
+  form.extra_models = []
+  groupModels.value = []
+  clearRequestSnapshot()
+  if (source === 'group') {
+    form.check_mode = CHECK_MODE_PROBE
+    form.account_id = null
+    form.endpoint = ''
+    form.api_key = ''
+  } else if (form.provider === 'composite') {
+    form.provider = PROVIDER_ANTHROPIC
+  } else if (form.provider === PROVIDER_ANTIGRAVITY) {
+    form.check_mode = CHECK_MODE_QUOTA
+  }
+}, { flush: 'sync' })
 // quota / quota_probe 需要关联账号；probe / quota_probe 需要探活字段。
-const usesQuotaMode = computed(() => form.check_mode !== CHECK_MODE_PROBE)
+const usesQuotaMode = computed(() => sourceMode.value === 'external' && form.check_mode !== CHECK_MODE_PROBE)
 const usesProbePart = computed(() => form.check_mode !== CHECK_MODE_QUOTA)
+const usesExternalProbe = computed(() => sourceMode.value === 'external' && usesProbePart.value)
 
 // jitter 上限与后端校验一致：interval - jitter 不得低于最小检测间隔 15 秒。
 const maxJitterSeconds = computed<number>(() => Math.max(0, (form.interval_seconds || 0) - 15))
@@ -725,6 +818,8 @@ watch(() => form.api_mode, () => {
 
 function resetForm() {
   suppressFormWatchers = true
+  sourceMode.value = 'group'
+  form.group_id = null
   form.name = ''
   form.provider = PROVIDER_ANTHROPIC
   form.api_mode = API_MODE_CHAT_COMPLETIONS
@@ -749,6 +844,8 @@ function resetForm() {
 
 function loadFromMonitor(m: ChannelMonitor) {
   suppressFormWatchers = true
+  sourceMode.value = m.group_id ? 'group' : 'external'
+  form.group_id = m.group_id ?? null
   form.name = m.name
   form.provider = m.provider
   form.api_mode = normalizeAPIMode(m.api_mode)
@@ -817,13 +914,14 @@ function pickMyKey(k: ApiKey) {
 
 function buildPayload(): CreateParams {
   return {
+    group_id: sourceMode.value === 'group' ? form.group_id : null,
     name: form.name.trim(),
     provider: form.provider,
     api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
     check_mode: form.check_mode,
     account_id: usesQuotaMode.value ? form.account_id : null,
-    endpoint: usesProbePart.value ? form.endpoint.trim() : '',
-    api_key: usesProbePart.value ? form.api_key.trim() : '',
+    endpoint: usesExternalProbe.value ? form.endpoint.trim() : '',
+    api_key: usesExternalProbe.value ? form.api_key.trim() : '',
     primary_model: usesProbePart.value ? form.primary_model.trim() : 'quota',
     extra_models: usesProbePart.value ? form.extra_models : [],
     group_name: form.group_name.trim(),
@@ -843,6 +941,7 @@ async function handleSubmit() {
     appStore.showError(t('admin.channelMonitor.nameRequired'))
     return
   }
+  if (sourceMode.value === 'group' && !form.group_id) { appStore.showError(t('monitorCommon.chooseGroupFirst')); return }
   if (usesQuotaMode.value && form.account_id == null) {
     appStore.showError(t('admin.channelMonitor.linkedAccountRequired'))
     return
@@ -858,6 +957,7 @@ async function handleSubmit() {
     if (target) {
       const { api_key, ...rest } = buildPayload()
       const req: UpdateParams = { ...rest }
+      if (sourceMode.value === 'external') req.group_id = 0
       // Only send api_key if user typed a new value
       if (api_key) req.api_key = api_key
       // template_id=null 用 clear_template=true 明确告诉后端清空（pointer 语义）

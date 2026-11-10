@@ -27,12 +27,6 @@
           <span class="font-mono text-xs truncate text-gray-500 dark:text-gray-400">
             {{ formatMonitorModel(item.primary_model) }}
           </span>
-          <span
-            v-if="item.group_name"
-            class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300 flex-shrink-0"
-          >
-            {{ item.group_name }}
-          </span>
         </div>
       </div>
       <span
@@ -54,7 +48,6 @@
       :secondary-value="formatLatency(item.primary_ping_latency_ms)"
       secondary-unit="ms"
     />
-
     <!-- 配额模式：最新用量/余额快照（服务端已按系统开关剥离，此处 flag 为纵深防御） -->
     <MonitorQuotaView v-if="quotaVisible" :snapshot="item.latest_quota" class="mt-2" />
 
@@ -62,12 +55,18 @@
     <div class="mt-4 border-t border-gray-100 dark:border-dark-700/60"></div>
 
     <!-- Availability row -->
-    <MonitorAvailabilityRow
-      :window-label="availabilityLabel"
-      :value="availabilityValue"
-      :samples-label="extraModelsCountLabel"
-    />
-
+    <div class="mt-3 grid grid-cols-2 gap-4" data-testid="monitor-percentage-metrics">
+      <MonitorAvailabilityRow
+        :window-label="availabilityLabel"
+        :value="availabilityValue"
+        stacked
+      />
+      <div class="min-w-0 border-l border-gray-100 pl-4 dark:border-dark-700/60" data-testid="monitor-cache-rate">
+        <div class="text-[11px] uppercase tracking-widest text-gray-400">{{ t('monitorCommon.cacheRateShort') }}</div>
+        <MonitorCacheRate :value="item.cache_rate_24h" colored split-unit class="mt-2 block text-3xl font-bold leading-none" />
+      </div>
+      <div v-if="extraModelsCountLabel" class="col-span-2 -mt-3 text-right text-[11px] text-gray-400">{{ extraModelsCountLabel }}</div>
+    </div>
     <!-- Timeline -->
     <MonitorTimeline
       :buckets="item.timeline"
@@ -89,6 +88,7 @@ import ProviderIcon from './ProviderIcon.vue'
 import MonitorMetricPair from './MonitorMetricPair.vue'
 import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
 import MonitorTimeline from './MonitorTimeline.vue'
+import MonitorCacheRate from '@/components/common/MonitorCacheRate.vue'
 import MonitorQuotaView from '@/components/common/MonitorQuotaView.vue'
 
 // 图标配色与 utils/platformColors.ts 的平台色对齐（新 4 家）。

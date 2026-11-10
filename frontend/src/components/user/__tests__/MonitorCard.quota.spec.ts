@@ -47,8 +47,6 @@ function mountCard(item: UserMonitorView) {
     },
     global: {
       stubs: {
-        MonitorMetricPair: true,
-        MonitorAvailabilityRow: true,
         MonitorTimeline: true,
       },
     },
@@ -56,6 +54,26 @@ function mountCard(item: UserMonitorView) {
 }
 
 describe('MonitorCard quota snapshot visibility', () => {
+  it.each([0, 0.5, 1])('uses the availability text color for a cache rate of %s', async rate => {
+    const wrapper = mountCard(makeItem({ cache_rate_24h: rate }))
+    await wrapper.setProps({ availabilityValue: rate * 100 })
+    const availability = wrapper.get('[data-testid="monitor-percentage-metrics"] .text-3xl')
+    const cache = wrapper.get('[data-testid="monitor-cache-rate"] .text-3xl')
+    expect(cache.attributes('style')).toBe(availability.attributes('style'))
+    expect(cache.find('span.text-base').text()).toBe('%')
+    wrapper.unmount()
+  })
+  it.each([
+    [null, '—'],
+    [0, '0%'],
+    [0.837, '83.7%'],
+    [1, '100%'],
+  ])('displays the group usage cache rate %s as %s', (rate, label) => {
+    const wrapper = mountCard(makeItem({ cache_rate_24h: rate }))
+    expect(wrapper.get('[data-testid="monitor-cache-rate"] .tabular-nums').text()).toBe(label)
+    wrapper.unmount()
+  })
+
   it('hides the quota block when the system switch is off even if data exists', () => {
     isQuotaVisible.mockReturnValue(false)
     const wrapper = mountCard(

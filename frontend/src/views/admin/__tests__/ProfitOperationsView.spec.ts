@@ -16,6 +16,17 @@ const fixture = () => ({ scope: { from: '2026-10-27T00:00:00Z', until: '2026-10-
 beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 10, 5, 17, 18, 42)); vi.resetAllMocks(); vi.mocked(readProfitOperations).mockResolvedValue(fixture()) })
 afterEach(() => vi.useRealTimers())
 describe('independent profit operations', () => {
+ it('includes internal operating costs by default and sends the selected source', async () => {
+  const next=fixture();Object.assign(next.usage.summary,{internal_requests:7,unknown_internal_requests:2,covered_internal_cost:1.25,pelican_cost:1,monitor_cost:null,user_request_cost:3,estimated_cost:null,estimated_profit:null})
+  vi.mocked(readProfitOperations).mockResolvedValue(next)
+  const w=mount(ProfitOperationsView);await flushPromises()
+  expect(readProfitOperations).toHaveBeenCalledWith(expect.objectContaining({source:'all'}),expect.anything())
+  expect(w.get('[data-testid="internal-cost-summary"]').text()).toContain('7')
+  expect(w.get('[data-testid="internal-cost-summary"]').text()).toContain('1.250000')
+  await w.get('[data-testid="profit-source"]').setValue('user');await w.get('[data-testid="profit-filters"]').trigger('submit');await flushPromises()
+  expect(readProfitOperations).toHaveBeenLastCalledWith(expect.objectContaining({source:'user',page:1}),expect.anything())
+  w.unmount()
+ })
  it('shows the persisted request accounting formula and current configuration estimate boundary', async () => {
   const w = mount(ProfitOperationsView); await flushPromises()
   expect(w.text()).toContain('profitOps.title'); expect(w.text()).toContain('profitOps.formula'); expect(w.text()).toContain('profitOps.attribution')

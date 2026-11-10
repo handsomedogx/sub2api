@@ -134,3 +134,17 @@ func pelicanGroupTestID(c *gin.Context, param string) (int64, bool) {
 	}
 	return id, true
 }
+
+// Models is a read-only local catalog shared by Pelican and V1 monitors.
+func (h *PelicanGroupTestHandler) Models(c *gin.Context) {
+	id, ok := ParseChannelMonitorID(c)
+	if !ok {
+		return
+	}
+	models, err := h.svc.ListTestModels(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"models": models})
+}

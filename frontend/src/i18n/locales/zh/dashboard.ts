@@ -555,6 +555,20 @@ export default {
 
   // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
+    cacheRateShort: "缓存率 · 24h",
+    probeSource: "测试来源",
+    groupSource: "站内分组",
+    externalSource: "外部 URL / API Key",
+    testGroup: "测试分组",
+    chooseGroupFirst: "请先选择分组",
+    groupProbeHint: "复用分组调度与账号凭据，无需填写 URL 或 API Key。探测会产生少量上游用量。",
+    groupsLoadError: "分组加载失败",
+    modelSelect: "选择模型",
+    modelsLoadError: "模型列表加载失败",
+    modelsEmpty: "该分组暂无可用模型",
+    modelUnavailable: "当前不可用",
+    cacheRate24h: "缓存率 · 近24小时",
+    cacheRate24hHint: "按绑定分组近24小时的使用记录汇总：缓存读取 Token ÷（输入 Token + 缓存读取 Token + 缓存写入 Token）。无记录、无输入 Token 或未绑定分组时显示 —。",
     status: {
       operational: '正常',
       degraded: '降级',
@@ -563,6 +577,7 @@ export default {
       unknown: '-'
     },
     providers: {
+      composite: '聚合分组',
       openai: 'OpenAI',
       anthropic: 'Anthropic',
       gemini: 'Gemini',

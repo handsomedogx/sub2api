@@ -165,6 +165,10 @@ func NewPelicanGroupTestService(
 	showcase *PelicanShowcaseService,
 	billing *BillingService,
 ) *PelicanGroupTestService {
+	if accountTest != nil {
+		accountTest.internalCostBilling = billing
+		accountTest.internalCostWriter, _ = repo.(InternalRequestCostWriter)
+	}
 	return &PelicanGroupTestService{
 		repo:       repo,
 		groups:     groupRepo,
@@ -452,14 +456,24 @@ func (s *PelicanGroupTestService) runSample(ctx context.Context, plan *PelicanGr
 		var sample *ScheduledTestResult
 		attempted = true
 		usage := &pelicanTestUsageCollector{model: route.account.GetMappedModel(route.model)}
+		costRate, attemptStarted := route.account.CostMultiplier(), s.now()
 		func() {
 			defer route.release()
 			defer func() {
-				cost, partial := usage.cost(s.billing, route.account)
-				incomplete = incomplete || partial
-				if cost != nil {
-					costUSD += *cost
-					priced = true
+				status := "interrupted"
+				if sample != nil {
+					status = sample.Status
+				}
+				records := usage.costRecords(s.billing, route.account, costRate, plan.ModelID, group.ID, internalCostOrigin(ctx), attemptStarted, status)
+				if persistInternalRequestCosts(ctx, s.repo, records) != nil {
+					incomplete = true
+				}
+				for _, record := range records {
+					incomplete = incomplete || record.Incomplete
+					if record.CostUSD != nil {
+						costUSD += *record.CostUSD
+						priced = true
+					}
 				}
 			}()
 			sample, err = s.runAccount(context.WithValue(ctx, pelicanTestUsageKey{}, usage), route.account.ID, route.model, plan.PelicanConfig)

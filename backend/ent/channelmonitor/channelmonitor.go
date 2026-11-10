@@ -25,6 +25,8 @@ const (
 	FieldProvider = "provider"
 	// FieldCheckMode holds the string denoting the check_mode field in the database.
 	FieldCheckMode = "check_mode"
+	// FieldGroupID holds the string denoting the group_id field in the database.
+	FieldGroupID = "group_id"
 	// FieldAccountID holds the string denoting the account_id field in the database.
 	FieldAccountID = "account_id"
 	// FieldAPIMode holds the string denoting the api_mode field in the database.
@@ -96,6 +98,7 @@ var Columns = []string{
 	FieldName,
 	FieldProvider,
 	FieldCheckMode,
+	FieldGroupID,
 	FieldAccountID,
 	FieldAPIMode,
 	FieldEndpoint,
@@ -137,6 +140,8 @@ var (
 	DefaultCheckMode string
 	// CheckModeValidator is a validator for the "check_mode" field. It is called by the builders before save.
 	CheckModeValidator func(string) error
+	// GroupIDValidator is a validator for the "group_id" field. It is called by the builders before save.
+	GroupIDValidator func(int64) error
 	// DefaultAPIMode holds the default value on creation for the "api_mode" field.
 	DefaultAPIMode string
 	// APIModeValidator is a validator for the "api_mode" field. It is called by the builders before save.
@@ -184,6 +189,7 @@ const (
 	ProviderDeepseek    Provider = "deepseek"
 	ProviderMinimax     Provider = "minimax"
 	ProviderOpencodeGo  Provider = "opencode_go"
+	ProviderComposite   Provider = "composite"
 )
 
 func (pr Provider) String() string {
@@ -193,7 +199,7 @@ func (pr Provider) String() string {
 // ProviderValidator is a validator for the "provider" field enum values. It is called by the builders before save.
 func ProviderValidator(pr Provider) error {
 	switch pr {
-	case ProviderOpenai, ProviderAnthropic, ProviderGemini, ProviderGrok, ProviderAntigravity, ProviderKimi, ProviderZhipu, ProviderDeepseek, ProviderMinimax, ProviderOpencodeGo:
+	case ProviderOpenai, ProviderAnthropic, ProviderGemini, ProviderGrok, ProviderAntigravity, ProviderKimi, ProviderZhipu, ProviderDeepseek, ProviderMinimax, ProviderOpencodeGo, ProviderComposite:
 		return nil
 	default:
 		return fmt.Errorf("channelmonitor: invalid enum value for provider field: %q", pr)
@@ -231,6 +237,11 @@ func ByProvider(opts ...sql.OrderTermOption) OrderOption {
 // ByCheckMode orders the results by the check_mode field.
 func ByCheckMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCheckMode, opts...).ToFunc()
+}
+
+// ByGroupID orders the results by the group_id field.
+func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
 }
 
 // ByAccountID orders the results by the account_id field.

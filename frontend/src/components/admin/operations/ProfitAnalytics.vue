@@ -11,6 +11,7 @@
         <label>{{ t('profitOps.until') }}<input v-model="until" type="datetime-local" class="input w-full" required /></label>
         <label>{{ t('profitOps.account') }}<input v-model.number="draft.account_id" type="number" min="0" class="input w-full" /></label>
         <label>{{ t('profitOps.group') }}<input v-model.number="draft.group_id" type="number" min="0" class="input w-full" /></label>
+        <label>{{ t('profitOps.source') }}<select v-model="draft.source" data-testid="profit-source" class="input w-full"><option v-for="source in sources" :key="source" :value="source">{{ t(`profitOps.sources.${source}`) }}</option></select></label>
         <label>{{ t('profitOps.upstream') }}<input v-model="draft.upstream" maxlength="2048" class="input w-full" /></label>
         <label>{{ t('profitOps.model') }}<input v-model="draft.model" data-testid="model-filter" maxlength="200" class="input w-full" /></label>
         <label>{{ t('profitOps.modelScope') }}<select v-model="draft.model_scope" data-testid="model-scope" class="input w-full"><option value="public">{{ t('profitOps.public') }}</option><option value="recorded">{{ t('profitOps.recorded') }}</option><option value="upstream">{{ t('profitOps.upstreamModel') }}</option></select></label>
@@ -34,6 +35,8 @@
         <section class="card space-y-4 p-4" data-testid="profit-summary">
           <h2 class="font-semibold">{{ t('profitOps.summary') }}</h2>
           <dl class="grid gap-4 sm:grid-cols-3 lg:grid-cols-6"><div v-for="key in amountKeys" :key="key"><dt class="text-sm text-gray-500">{{ t(`profitOps.${key}`) }}</dt><dd class="mt-1 break-words text-lg font-semibold">{{ key === 'requests' ? snapshot.usage.summary.requests : formatMetric(snapshot.usage.summary, key) }}</dd></div></dl>
+          <p data-testid="internal-cost-summary" class="text-sm">{{ t('profitOps.internalRequests') }} {{ snapshot.usage.summary.internal_requests || 0 }} · {{ t('profitOps.unknownInternal') }} {{ snapshot.usage.summary.unknown_internal_requests || 0 }} · {{ t('profitOps.coveredInternal') }} ${{ number(snapshot.usage.summary.covered_internal_cost ?? 0) }}</p>
+          <p class="text-xs leading-6 text-gray-500">{{ t('profitOps.internalHistory') }}</p>
           <p class="text-sm">{{ t('profitOps.coverage') }} {{ snapshot.usage.summary.cost_covered_requests }} / {{ snapshot.usage.summary.requests }} · {{ t('profitOps.unknownCost') }} {{ snapshot.usage.summary.unknown_cost_requests }} · {{ t('profitOps.unknownUpstream') }} {{ snapshot.usage.summary.unknown_upstream_requests }}</p>
           <p class="text-xs leading-6 text-gray-500">{{ t('profitOps.savedMultiplier') }} {{ snapshot.usage.summary.saved_multiplier_requests }} · {{ t('profitOps.defaultMultiplier') }} {{ snapshot.usage.summary.default_multiplier_requests }} · {{ t('profitOps.savedBase') }} {{ snapshot.usage.summary.saved_stats_base_requests }} · {{ t('profitOps.fallbackBase') }} {{ snapshot.usage.summary.standard_base_fallback_requests }} · {{ t('profitOps.subscription') }} {{ snapshot.usage.summary.subscription_requests }} · {{ t('profitOps.deleted') }} {{ snapshot.usage.summary.deleted_account_requests }}</p>
           <p class="text-xs text-gray-500">{{ t('profitOps.unknownIncome') }} {{ snapshot.usage.summary.unknown_income_requests }} · {{ t('profitOps.unknownStandard') }} {{ snapshot.usage.summary.unknown_standard_requests }} · {{ t('profitOps.unmeteredZero') }} {{ snapshot.usage.summary.unmetered_zero_records }}<br />{{ t('profitOps.configUpdated') }} {{ snapshot.usage.summary.oldest_config_updated_at || '—' }} → {{ snapshot.usage.summary.latest_config_updated_at || '—' }}</p>
@@ -65,19 +68,20 @@ import UpstreamChannelManager from './UpstreamChannelManager.vue'
 import { readProfitOperations, type OperationsQuery, type OperationsSnapshot, type OperationsRow, type ProfitMetrics } from '@/api/admin/profitOperations'
 const { t } = useI18n()
 const auth = useAuthStore()
-const amountKeys = ['requests','standard_charge','request_income','estimated_cost','estimated_profit','margin'] as const
-const sortKeys = [...amountKeys, 'name']
+const amountKeys = ['requests','internal_requests','standard_charge','request_income','user_request_cost','pelican_cost','monitor_cost','estimated_cost','estimated_profit','margin'] as const
+const sortKeys = ['requests','standard_charge','request_income','estimated_cost','estimated_profit','margin','name'] as const
+const sources = ['all','user','internal','pelican','monitor'] as const
 const timePresets = ['today', 'yesterday', 'thisWeek', 'lastWeek', 'last24h', 'last48h', 'thisMonth', 'lastMonth'] as const
 const at = new Date(), start = new Date(at)
 start.setHours(0,0,0,0)
 const local = (d: Date) => new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)
 const from=ref(local(start)), until=ref(local(at))
-const initial: OperationsQuery = { from:start.toISOString(),until:at.toISOString(),upstream:'',channel_id:0,account_id:0,group_id:0,model:'',model_scope:'public',dimension:'upstream',sort:'requests',direction:'desc',page:1,page_size:20 }
+const initial: OperationsQuery = { source:'all',from:start.toISOString(),until:at.toISOString(),upstream:'',channel_id:0,account_id:0,group_id:0,model:'',model_scope:'public',dimension:'upstream',sort:'requests',direction:'desc',page:1,page_size:20 }
 const draft=ref<OperationsQuery>({...initial}), applied=ref<OperationsQuery>({...initial})
 const snapshot=ref<OperationsSnapshot|null>(null), loading=ref(false), error=ref('')
 let request=0, alive=true, controller: AbortController|undefined
 function number(v: number|null|undefined, decimals=6) { return v==null || !Number.isFinite(v) ? t('profitOps.unknown') : v.toLocaleString(undefined,{minimumFractionDigits:decimals,maximumFractionDigits:decimals}) }
-function formatMetric(m:ProfitMetrics,key:typeof amountKeys[number]) { return key==='margin' ? (m.margin==null || !Number.isFinite(m.margin) ? t('profitOps.unknown') : `${(m.margin*100).toFixed(2)}%`) : number(m[key]) }
+function formatMetric(m:ProfitMetrics,key:typeof amountKeys[number]) { if(key==='internal_requests')return number(m.internal_requests ?? 0,0); return key==='margin' ? (m.margin==null || !Number.isFinite(m.margin) ? t('profitOps.unknown') : `${(m.margin*100).toFixed(2)}%`) : number(m[key]) }
 async function load() {
  const id=++request; controller?.abort(); controller=new AbortController(); loading.value=true; error.value=''; snapshot.value=null
  try { const next=await readProfitOperations({...applied.value},controller.signal); if(alive && request===id) snapshot.value=next }
@@ -127,7 +131,7 @@ function selectTimeRange(preset: typeof timePresets[number]) {
  void load()
 }
 function page(delta:number){applied.value={...applied.value,page:applied.value.page+delta};void load()}
-function drill(row:OperationsRow){if(applied.value.dimension==='upstream'){const id=row.channel_id||0;applied.value={...applied.value,upstream:id?'':row.key,channel_id:id,account_id:0,dimension:'account',page:1}}else if(applied.value.dimension==='account'){applied.value={...applied.value,account_id:Number(row.key),dimension:'model',page:1}}draft.value={...applied.value};void load()}
+function drill(row:OperationsRow){if(applied.value.dimension==='upstream'){const id=row.channel_id||0;applied.value={...applied.value,upstream:id?'':row.key,channel_id:id,account_id:0,dimension:'account',page:1}}else if(applied.value.dimension==='account'){if(Number(row.key)<=0)return;applied.value={...applied.value,account_id:Number(row.key),dimension:'model',page:1}}draft.value={...applied.value};void load()}
 function selectUpstream(key:string,channelID=0){applied.value={...applied.value,upstream:channelID?'':key,channel_id:channelID,account_id:0,dimension:'account',page:1};draft.value={...applied.value};void load()}
 function selectAccount(id:number){applied.value={...applied.value,account_id:id,dimension:'model',page:1};draft.value={...applied.value};void load()}
 function overview(){applied.value={...applied.value,upstream:'',channel_id:0,account_id:0,dimension:'upstream',page:1};draft.value={...applied.value};void load()}

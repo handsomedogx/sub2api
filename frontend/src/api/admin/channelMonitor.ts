@@ -6,6 +6,7 @@
 import { apiClient } from '../client'
 
 export type Provider =
+  | 'composite'
   | 'openai'
   | 'anthropic'
   | 'gemini'
@@ -60,6 +61,8 @@ export interface MonitorQuotaSnapshot {
 }
 
 export interface ChannelMonitor {
+  cache_rate_24h?: number | null
+  group_id?: number | null
   id: number
   name: string
   provider: Provider
@@ -138,6 +141,7 @@ export async function updateDisplayOrder(monitorIds: number[]): Promise<void> {
 }
 
 export interface CreateParams {
+  group_id?: number | null
   name: string
   provider: Provider
   api_mode?: APIMode
