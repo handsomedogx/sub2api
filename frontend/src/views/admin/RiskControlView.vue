@@ -1123,12 +1123,12 @@
 
       <BaseDialog
         :show="inputDetailRow !== null"
-        :title="t('admin.riskControl.inputDetailTitle')"
+        :title="t(inputDetailRow?.action === 'cyber_policy' ? 'admin.riskControl.evidence.title' : 'admin.riskControl.inputDetailTitle')"
         width="wide"
         @close="closeInputDetail"
       >
         <div v-if="inputDetailRow" class="space-y-5">
-          <CyberEvidencePanel v-if="inputDetailRow.action === 'cyber_policy'" :key="inputDetailRow.id" :log-id="inputDetailRow.id" />
+          <CyberEvidencePanel v-if="inputDetailRow.action === 'cyber_policy'" :key="inputDetailRow.id" :log-id="inputDetailRow.id" :fallback-reason="inputDetailRow.error" auto-load />
           <div class="text-sm break-words" data-test="audit-engine-meta">
             <span class="font-medium">{{ t('admin.riskControl.auditSource') }}: </span>
             <template v-if="inputDetailRow.engine_meta">
@@ -1172,10 +1172,10 @@
             </div>
           </div>
 
-          <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+          <div v-if="inputDetailRow.action !== 'cyber_policy'" class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t(inputDetailRow.action === 'cyber_policy' ? 'admin.riskControl.evidence.input' : 'admin.riskControl.inputDetailContent') }}</p>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.inputDetailContent') }}</p>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {{ inputDetailRow.endpoint || '-' }} · {{ inputDetailRow.provider || '-' }} / {{ inputDetailRow.model || '-' }}
                 </p>
@@ -1186,7 +1186,7 @@
             </div>
             <pre class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ inputDetailText }}</pre>
             <template v-if="inputDetailRow.error">
-              <p class="mt-4 text-sm font-medium">{{ t(inputDetailRow.action === 'cyber_policy' ? 'admin.riskControl.evidence.reason' : 'admin.riskControl.errorDetail') }}</p>
+              <p class="mt-4 text-sm font-medium">{{ t('admin.riskControl.errorDetail') }}</p>
               <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-words text-sm">{{ inputDetailRow.error }}</pre>
             </template>
           </div>
@@ -1716,7 +1716,7 @@ const riskThresholdRows = computed<RiskThresholdRow[]>(() => (
 const inputDetailText = computed(() => {
   if (!inputDetailRow.value) return '-'
   // Upstream error text is never a substitute for the user's visible input.
-  return inputDetailRow.value.input_excerpt || (inputDetailRow.value.action === 'cyber_policy' ? t('admin.riskControl.evidence.noInputSummary') : '-')
+  return inputDetailRow.value.input_excerpt || '-'
 })
 
 const queueUsagePercent = computed(() => `${Math.min(100, Math.max(0, status.value?.queue_usage_percent ?? 0)).toFixed(1)}%`)
@@ -2047,7 +2047,7 @@ function evidenceStatusLabel(state?: string): string {
 
 function inputSummaryText(row: ContentModerationLog): string {
   // Never present upstream rejection/error text as the user's input summary.
-  return row.input_excerpt || (row.action === 'cyber_policy' ? t('admin.riskControl.evidence.noInputSummary') : '-')
+  return row.action === 'cyber_policy' ? t('admin.riskControl.evidence.view') : row.input_excerpt || '-'
 }
 
 function openInputDetail(row: ContentModerationLog) {

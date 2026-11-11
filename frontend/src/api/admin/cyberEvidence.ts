@@ -17,12 +17,27 @@ export interface CyberEvidence {
     truncated: boolean
     omission?: string
     original_bytes: number
+    scanned_bytes?: number
+    stored_bytes?: number
+    messages_scanned?: number
+    messages_retained?: number
+    messages_omitted?: number
+    scan_complete?: boolean
+    omitted_fields?: string[]
+    request_body?: string
+    body_retention_version?: number
+    request_body_bytes?: number
+    request_omission?: string
+    upstream_response?: string
+    response_bytes?: number
+    response_omission?: string
+    response_scope?: string
     redaction_version: string
     source: string
     upstream_http_status?: number
   }
 }
-export interface EvidenceConfig { enabled: boolean; retention_days: number }
+export interface EvidenceConfig { enabled: boolean; retention_days: number; parse_limit_mib?: number; body_limit_mib?: number }
 export interface EvidenceRuntime {
   encryption_ready: boolean
   queue_depth: number

@@ -1069,7 +1069,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
 			Code:           cyberCode,
 			Message:        cyberMsg,
-			Body:           truncateString(string(body), 4096),
+			Body:           string(body),
 			UpstreamStatus: resp.StatusCode,
 		})
 	}
@@ -2390,7 +2390,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 					MarkOpsCyberPolicy(c, CyberPolicyMark{
 						Code:           code,
 						Message:        msg,
-						Body:           truncateString(string(dataBytes), 4096),
+						Body:           string(dataBytes),
 						UpstreamStatus: http.StatusOK,
 						UpstreamInTok:  usage.InputTokens,
 						UpstreamOutTok: usage.OutputTokens,

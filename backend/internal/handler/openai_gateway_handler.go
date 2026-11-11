@@ -5401,7 +5401,9 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarkedWithIdentity(c *gin.Cont
 	}
 	evidence := cyberevidence.Prepared{Status: "unavailable"}
 	if cmSvc != nil && cmSvc.CyberEvidence() != nil {
-		evidence = cmSvc.CyberEvidence().PrepareWithSession(cyberBlockBody, mark.Message, sessionID, mark.UpstreamStatus)
+		evidence = cmSvc.CyberEvidence().PrepareRejection(cyberBlockBody, mark.Message, sessionID, cyberevidence.UpstreamRejection{
+			Body: []byte(mark.EvidenceBody), OriginalBytes: mark.EvidenceBodyBytes, Status: mark.UpstreamStatus,
+		})
 	}
 	go func() {
 		defer evidence.Release()

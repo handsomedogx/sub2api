@@ -19,14 +19,71 @@ type Cipher interface {
 type Config struct {
 	Enabled       bool `json:"enabled"`
 	RetentionDays int  `json:"retention_days"`
+	ParseLimitMiB int  `json:"parse_limit_mib"`
+	BodyLimitMiB  int  `json:"body_limit_mib"`
 }
 
-func DefaultConfig() Config  { return Config{Enabled: true, RetentionDays: 7} }
-func (c Config) Valid() bool { return c.RetentionDays >= 1 && c.RetentionDays <= 30 }
+func DefaultConfig() Config {
+	return Config{Enabled: true, RetentionDays: 7, ParseLimitMiB: 16, BodyLimitMiB: 32}
+}
+func (c Config) Valid() bool {
+	return c.RetentionDays >= 1 && c.RetentionDays <= 30 && c.ParseLimitMiB >= 0 && c.ParseLimitMiB <= 64 && c.BodyLimitMiB >= 0 && c.BodyLimitMiB <= 64
+}
+func (c Config) bodyLimit() int {
+	if c.BodyLimitMiB == 0 {
+		return 32 << 20
+	}
+	return c.BodyLimitMiB << 20
+}
+func (c Config) parseLimit() int {
+	if c.ParseLimitMiB <= 0 {
+		return MaxParseBytes
+	}
+	return c.ParseLimitMiB * 1024 * 1024
+}
 
 type preparationLease struct {
 	once    sync.Once
 	release func()
+	payload *payloadReservation
+}
+
+const retainedPayloadBudget = 128 << 20
+
+type payloadReservation struct {
+	refs    atomic.Int64
+	bytes   int64
+	service *Service
+}
+
+func (r *payloadReservation) retain() bool {
+	for {
+		n := r.refs.Load()
+		if n <= 0 {
+			return false
+		}
+		if r.refs.CompareAndSwap(n, n+1) {
+			return true
+		}
+	}
+}
+func (r *payloadReservation) release() {
+	if r.refs.Add(-1) == 0 {
+		r.service.retainedBytes.Add(-r.bytes)
+	}
+}
+func (s *Service) reservePayload(bytes int64) *payloadReservation {
+	for {
+		used := s.retainedBytes.Load()
+		if bytes > retainedPayloadBudget-used {
+			return nil
+		}
+		if s.retainedBytes.CompareAndSwap(used, used+bytes) {
+			r := &payloadReservation{bytes: bytes, service: s}
+			r.refs.Store(1)
+			return r
+		}
+	}
 }
 
 // Release frees the bounded pre-queue reservation, including when the existing
@@ -85,12 +142,21 @@ type job struct {
 	id int64
 	p  Prepared
 }
+
+func (j job) release() {
+	if j.p.lease != nil && j.p.lease.payload != nil {
+		j.p.lease.payload.release()
+	}
+}
+
 type Service struct {
 	pendingPreparations                                                       chan struct{}
 	store                                                                     Store
 	cipher                                                                    Cipher
 	ready                                                                     bool
 	config                                                                    atomic.Pointer[Config]
+	retainedBytes                                                             atomic.Int64
+	reads                                                                     chan struct{}
 	queue                                                                     chan job
 	admission                                                                 chan struct{}
 	stop                                                                      chan struct{}
@@ -102,7 +168,7 @@ type Service struct {
 }
 
 func New(store Store, cipher Cipher, ready bool) *Service {
-	s := &Service{pendingPreparations: make(chan struct{}, 64), store: store, cipher: cipher, ready: ready && cipher != nil, queue: make(chan job, 64), admission: make(chan struct{}, 2), stop: make(chan struct{}), done: make(chan struct{})}
+	s := &Service{reads: make(chan struct{}, 2), pendingPreparations: make(chan struct{}, 64), store: store, cipher: cipher, ready: ready && cipher != nil, queue: make(chan job, 64), admission: make(chan struct{}, 2), stop: make(chan struct{}), done: make(chan struct{})}
 	c := DefaultConfig()
 	s.config.Store(&c)
 	// All configuration reads have deadlines; an unavailable store disables capture.
@@ -124,7 +190,7 @@ func (s *Service) refresh() {
 func (s *Service) Config() Config { return *s.config.Load() }
 func (s *Service) UpdateConfig(ctx context.Context, c Config) error {
 	if !c.Valid() {
-		return errors.New("retention_days must be 1..30")
+		return errors.New("retention_days must be 1..30; parse_limit_mib and body_limit_mib must be 1..64")
 	}
 	if err := s.store.SaveConfig(ctx, c); err != nil {
 		return ErrUnavailable
@@ -133,15 +199,27 @@ func (s *Service) UpdateConfig(ctx context.Context, c Config) error {
 	return nil
 }
 func (s *Service) Prepare(body []byte, reason string, upstreamStatus ...int) Prepared {
-	return s.prepare(body, reason, "", upstreamStatus...)
+	return s.prepare(body, reason, "", nil, upstreamStatus...)
 }
 
 // PrepareWithSession also records the explicit sanitized session reference ID.
 func (s *Service) PrepareWithSession(body []byte, reason, sessionID string, upstreamStatus ...int) Prepared {
-	return s.prepare(body, reason, sessionID, upstreamStatus...)
+	return s.prepare(body, reason, sessionID, nil, upstreamStatus...)
 }
 
-func (s *Service) prepare(body []byte, reason, sessionID string, upstreamStatus ...int) Prepared {
+// PrepareRejection retains only the input already held by the gateway and the
+// upstream rejection body/event. It does not start general traffic capture.
+type UpstreamRejection struct {
+	Body          []byte
+	OriginalBytes int
+	Status        int
+}
+
+func (s *Service) PrepareRejection(body []byte, reason, sessionID string, upstream UpstreamRejection) Prepared {
+	return s.prepare(body, reason, sessionID, &upstream, upstream.Status)
+}
+
+func (s *Service) prepare(body []byte, reason, sessionID string, upstream *UpstreamRejection, upstreamStatus ...int) Prepared {
 	p := Prepared{Status: "disabled", CapturedAt: time.Now().UTC()}
 	if !s.Config().Enabled {
 		return p
@@ -152,7 +230,14 @@ func (s *Service) prepare(body []byte, reason, sessionID string, upstreamStatus 
 	}
 	select {
 	case s.pendingPreparations <- struct{}{}:
-		p.lease = &preparationLease{release: func() { <-s.pendingPreparations }}
+		lease := &preparationLease{}
+		lease.release = func() {
+			<-s.pendingPreparations
+			if lease.payload != nil {
+				lease.payload.release()
+			}
+		}
+		p.lease = lease
 	default:
 		p.Status = "capture_busy"
 		s.dropped.Add(1)
@@ -172,20 +257,37 @@ func (s *Service) prepare(body []byte, reason, sessionID string, upstreamStatus 
 		s.dropped.Add(1)
 		return p
 	}
-	payload := SnapshotWithSession(body, reason, sessionID)
+	payload := snapshotWithLimit(body, reason, sessionID, s.Config().parseLimit())
+	payload.BodyRetentionVersion = 1
+	payload.RequestBody, payload.RequestOmission = retainBody(body, s.Config().bodyLimit())
+	payload.RequestBodyBytes = len(payload.RequestBody)
+	payload.ResponseOmission = "body_unavailable"
+	if upstream != nil {
+		payload.ResponseBytes = max(len(upstream.Body), upstream.OriginalBytes)
+		if payload.ResponseBytes > MaxRejectionBytes {
+			payload.ResponseOmission = "body_storage_limit"
+		} else {
+			payload.UpstreamResponse, payload.ResponseOmission = retainBody(upstream.Body, MaxRejectionBytes)
+		}
+	}
+	payload.ResponseScope = "upstream_rejection_body_or_event"
 	if len(upstreamStatus) > 0 {
 		payload.UpstreamHTTPStatus = upstreamStatus[0]
 	}
 	p.Truncated = payload.Truncated
 	p.OriginalBytes = payload.OriginalBytes
 	p.RedactionVersion = payload.RedactionVersion
-	if payload.Input == "" {
-		p.Status = payload.Omission
-		return p
-	}
+	// Even without extractable input, retain the encrypted upstream reason,
+	// original size and omission details so an audit never becomes a blank panel.
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		p.Status = "capture_failed"
+		return p
+	}
+	p.lease.payload = s.reservePayload(int64(len(raw))*2 + 1024)
+	if p.lease.payload == nil {
+		p.Status = "capture_busy"
+		s.dropped.Add(1)
 		return p
 	}
 	ciphertext, err := s.cipher.Encrypt(string(raw))
@@ -223,15 +325,20 @@ func (s *Service) Enqueue(id int64, p Prepared) {
 		s.setStatus(id, "interrupted")
 		return
 	}
+	if p.lease != nil && p.lease.payload != nil && !p.lease.payload.retain() {
+		return
+	}
 	select {
 	case s.queue <- job{id, p}:
 		s.queued.Add(1)
 	default:
+		(job{p: p}).release()
 		s.dropped.Add(1)
 		s.setStatus(id, "queue_full")
 	}
 }
 func (s *Service) write(j job) {
+	defer j.release()
 	for attempt := 0; attempt < 3; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		err := s.store.Save(ctx, j.id, j.p, s.Config().RetentionDays)
@@ -290,6 +397,7 @@ func (s *Service) run() {
 					}
 					s.dropped.Add(1)
 					s.markInterrupted(j.id, interruptDeadline)
+					j.release()
 					continue
 				default:
 				}
@@ -324,6 +432,12 @@ func (s *Service) Stats() Stats {
 	return Stats{Queued: s.queued.Load(), Saved: s.saved.Load(), Failed: s.failed.Load(), Dropped: s.dropped.Load(), StatusWriteFailed: s.statusFailed.Load(), CleanupFailed: s.cleanupFailed.Load(), ConfigLoadFailed: s.configFailed.Load(), EncryptionReady: s.ready, QueueDepth: len(s.queue), QueueCapacity: cap(s.queue)}
 }
 func (s *Service) Get(ctx context.Context, id int64) (Record, error) {
+	select {
+	case s.reads <- struct{}{}:
+		defer func() { <-s.reads }()
+	default:
+		return Record{}, ErrUnavailable
+	}
 	r, err := s.store.Get(ctx, id)
 	if err != nil {
 		return r, err

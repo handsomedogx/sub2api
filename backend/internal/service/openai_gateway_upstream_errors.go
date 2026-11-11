@@ -625,7 +625,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
 			Code:           code,
 			Message:        cyberMsg,
-			Body:           truncateString(string(body), 4096),
+			Body:           string(body),
 			UpstreamStatus: resp.StatusCode,
 		})
 		setOpsUpstreamError(c, resp.StatusCode, cyberMsg, truncateString(string(body), 2048))
@@ -900,7 +900,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
 			Code:           code,
 			Message:        cyberMsg,
-			Body:           truncateString(string(body), 4096),
+			Body:           string(body),
 			UpstreamStatus: resp.StatusCode,
 		})
 		setOpsUpstreamError(c, resp.StatusCode, cyberMsg, truncateString(string(body), 2048))

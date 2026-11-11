@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -44,6 +45,39 @@ func (s *evidenceHandlerStore) Delete(context.Context, int64) error {
 	return nil
 }
 func (s *evidenceHandlerStore) Cleanup(context.Context, int) (int64, error) { return 0, nil }
+func TestCyberEvidencePreviewExcludesRetainedBodiesButExportIncludesThem(t *testing.T) {
+	stored := cyberevidence.Payload{Input: `{"input":"preview"}`, RequestBody: `{"input":"FULL_REQUEST_TAIL"}`, RequestBodyBytes: 100, UpstreamResponse: `{"error":{"message":"FULL_REJECTION_TAIL"}}`}
+	raw, err := json.Marshal(stored)
+	require.NoError(t, err)
+	ciphertext, err := (evidenceHandlerCipher{}).Encrypt(string(raw))
+	require.NoError(t, err)
+	store := &evidenceHandlerStore{r: cyberevidence.Record{LogID: 7, Status: "saved", Ciphertext: ciphertext}}
+	es := cyberevidence.New(store, evidenceHandlerCipher{}, true)
+	defer es.Close()
+	cm := service.NewContentModerationService(nil, nil, nil, nil, nil, nil, nil, nil).WithCyberEvidence(es)
+	h := NewContentModerationHandler(cm)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 17})
+		c.Set(string(middleware.ContextKeyUserRole), "admin")
+		c.Next()
+	})
+	router.GET("/logs/:id/evidence", h.GetCyberEvidence)
+	router.GET("/logs/:id/evidence/export", h.ExportCyberEvidence)
+	preview := httptest.NewRecorder()
+	router.ServeHTTP(preview, httptest.NewRequest("GET", "/logs/7/evidence", nil))
+	require.Equal(t, http.StatusOK, preview.Code)
+	require.Contains(t, preview.Body.String(), "preview")
+	require.NotContains(t, preview.Body.String(), "FULL_REQUEST_TAIL")
+	require.NotContains(t, preview.Body.String(), "FULL_REJECTION_TAIL")
+	export := httptest.NewRecorder()
+	router.ServeHTTP(export, httptest.NewRequest("GET", "/logs/7/evidence/export", nil))
+	require.Equal(t, http.StatusOK, export.Code)
+	require.Contains(t, export.Body.String(), "FULL_REQUEST_TAIL")
+	require.Contains(t, export.Body.String(), "FULL_REJECTION_TAIL")
+	require.Contains(t, export.Header().Get("Content-Disposition"), "cyber-evidence-7.json")
+}
+
 func TestCyberEvidenceAdminOnlyReadExportDelete(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &evidenceHandlerStore{r: cyberevidence.Record{LogID: 7, RequestID: "req_synthetic", Status: "historical_unavailable", OccurredAt: time.Now()}}

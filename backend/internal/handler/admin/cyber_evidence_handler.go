@@ -52,9 +52,9 @@ func (h *ContentModerationHandler) UpdateCyberEvidenceConfig(c *gin.Context) {
 	if s == nil {
 		return
 	}
-	var cfg cyberevidence.Config
+	cfg := s.Config()
 	if c.ShouldBindJSON(&cfg) != nil || !cfg.Valid() {
-		response.BadRequest(c, "retention_days must be 1..30")
+		response.BadRequest(c, "retention_days must be 1..30; parse_limit_mib and body_limit_mib must be 1..64")
 		return
 	}
 	if err := s.UpdateConfig(c.Request.Context(), cfg); err != nil {
@@ -79,6 +79,11 @@ func (h *ContentModerationHandler) GetCyberEvidence(c *gin.Context) {
 		return
 	}
 	middleware.SetAuditExtra(c, map[string]any{"event_id": id})
+	// Large retained bodies belong only to explicit export, not the preview API.
+	if r.Payload != nil {
+		r.Payload.RequestBody = ""
+		r.Payload.UpstreamResponse = ""
+	}
 	response.Success(c, r)
 }
 func (h *ContentModerationHandler) ExportCyberEvidence(c *gin.Context) {

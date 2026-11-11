@@ -7,6 +7,10 @@
     <template v-if="config && runtime">
       <label class="flex items-center gap-2"><input v-model="config.enabled" type="checkbox" />{{ t('admin.riskControl.evidence.enabled') }}</label>
       <label class="block">{{ t('admin.riskControl.evidence.retention') }}<input v-model.number="config.retention_days" type="number" min="1" max="30" class="input mt-1" /></label>
+      <label class="block">{{ t('admin.riskControl.evidence.parseLimit') }}<input v-model.number="config.parse_limit_mib" type="number" min="1" max="64" class="input mt-1" data-testid="evidence-parse-limit" /></label>
+      <p class="text-sm text-gray-500">{{ t('admin.riskControl.evidence.parseLimitHint') }}</p>
+      <label class="block">{{ t('admin.riskControl.evidence.bodyLimit') }}<input v-model.number="config.body_limit_mib" type="number" min="1" max="64" class="input mt-1" data-testid="evidence-body-limit" /></label>
+      <p class="text-sm text-gray-500">{{ t('admin.riskControl.evidence.bodyLimitHint') }}</p>
       <p class="text-sm">{{ t(runtime.encryption_ready ? 'admin.riskControl.evidence.keyReady' : 'admin.riskControl.evidence.keyMissing') }}</p>
       <p class="text-sm">{{ t('admin.riskControl.evidence.runtime', { saved: runtime.saved, failed: runtime.failed, dropped: runtime.dropped, depth: runtime.queue_depth, capacity: runtime.queue_capacity, statusFailed: runtime.status_write_failed, cleanupFailed: runtime.cleanup_failed, configFailed: runtime.config_load_failed }) }}</p>
       <button type="button" class="btn btn-primary" :disabled="busy || !valid" @click="save">{{ t('admin.riskControl.evidence.save') }}</button>
@@ -22,10 +26,10 @@ const config = ref<EvidenceConfig | null>(null)
 const runtime = ref<EvidenceRuntime | null>(null)
 const message = ref('')
 const busy = ref(false)
-const valid = computed(() => Number.isInteger(config.value?.retention_days) && (config.value?.retention_days ?? 0) >= 1 && (config.value?.retention_days ?? 31) <= 30)
+const valid = computed(() => Number.isInteger(config.value?.retention_days) && (config.value?.retention_days ?? 0) >= 1 && (config.value?.retention_days ?? 31) <= 30 && Number.isInteger(config.value?.parse_limit_mib) && (config.value?.parse_limit_mib ?? 0) >= 1 && (config.value?.parse_limit_mib ?? 65) <= 64 && Number.isInteger(config.value?.body_limit_mib) && (config.value?.body_limit_mib ?? 0) >= 1 && (config.value?.body_limit_mib ?? 65) <= 64)
 async function load() {
   busy.value = true; message.value = ''
-  try { const data = await getEvidenceConfig(); config.value = data.config; runtime.value = data.runtime }
+  try { const data = await getEvidenceConfig(); config.value = { ...data.config, parse_limit_mib: data.config.parse_limit_mib || 16, body_limit_mib: data.config.body_limit_mib || 32 }; runtime.value = data.runtime }
   catch { message.value = t('admin.riskControl.evidence.failed') }
   finally { busy.value = false }
 }

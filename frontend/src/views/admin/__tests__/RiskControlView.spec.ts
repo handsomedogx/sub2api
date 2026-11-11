@@ -7,6 +7,9 @@ import type { DOMWrapper, VueWrapper } from '@vue/test-utils'
 import RiskControlView from '../RiskControlView.vue'
 import type { ContentModerationAPIKeyStatus, ContentModerationConfig, UpdateContentModerationConfig } from '@/api/admin/riskControl'
 
+const cyberAPI = vi.hoisted(() => ({ getEvidence: vi.fn(), exportEvidence: vi.fn(), deleteEvidence: vi.fn(), getEvidenceConfig: vi.fn(), updateEvidenceConfig: vi.fn() }))
+vi.mock('@/api/admin/cyberEvidence', () => cyberAPI)
+
 const {
   getConfig,
   updateConfig,
@@ -76,6 +79,7 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
+      te: () => true,
       t: (key: string, params?: Record<string, string | number>) => {
         if (key === 'admin.riskControl.preBlockAPIKeyLoadSummary') {
           return `同步并发 ${params?.active} / 可用 Key ${params?.available}，累计 ${params?.total} 次，worker：${params?.workerActive} / ${params?.workerTotal}`
@@ -205,6 +209,7 @@ function findButtonByText(wrapper: VueWrapper, text: string): DOMWrapper<HTMLBut
 
 describe('admin RiskControlView', () => {
   beforeEach(() => {
+    cyberAPI.getEvidence.mockReset()
     listModerationUsers.mockReset()
     listModerationUsers.mockResolvedValue({ items: [], total: 0 })
     getConfig.mockReset()
@@ -237,6 +242,32 @@ describe('admin RiskControlView', () => {
     const wrapper = mount(RiskControlView, { attachTo: document.body, global: { stubs: { AppLayout: AppLayoutStub, Icon: true } } })
     await flushPromises()
     expect(wrapper.getComponent(SecurityAuditNav).props('active')).toBe('/admin/risk-control')
+    wrapper.unmount()
+  })
+
+  it('shows cyber evidence as an explicit action and loads only after opening its row', async () => {
+    listLogs.mockResolvedValue({ total: 1, page: 1, page_size: 20, pages: 1, items: [{
+      id: 711, created_at: '2026-11-10T00:00:00Z', action: 'cyber_policy', mode: 'post_upstream', flagged: true,
+      input_excerpt: '', evidence_status: 'saved', highest_category: 'cyber_policy', highest_score: 1,
+      error: 'HISTORICAL REJECTION', category_scores: {}, threshold_snapshot: {},
+    }] })
+    cyberAPI.getEvidence.mockResolvedValue({ log_id: 711, status: 'saved', payload: {
+      input: '{"input":"READABLE EVIDENCE"}', upstream_reason: 'SAVED REJECTION', original_bytes: 99, truncated: false,
+    } })
+    const wrapper = mount(RiskControlView, { global: { stubs: {
+      AppLayout: AppLayoutStub, BaseDialog: BaseDialogStub, Icon: true, Select: true, Toggle: true,
+      Pagination: true, ModelWhitelistSelector: ModelWhitelistSelectorStub, ProxySelector: true,
+    } } })
+    await flushPromises()
+    expect(cyberAPI.getEvidence).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('admin.riskControl.evidence.noInputSummary')
+    await findButtonByText(wrapper, 'admin.riskControl.evidence.view').trigger('click'); await flushPromises()
+    expect(cyberAPI.getEvidence).toHaveBeenCalledTimes(1)
+    expect(cyberAPI.getEvidence).toHaveBeenCalledWith(711)
+    expect(wrapper.text()).toContain('READABLE EVIDENCE')
+    expect(wrapper.text()).toContain('SAVED REJECTION')
+    expect(wrapper.text()).not.toContain('HISTORICAL REJECTION')
+    expect(wrapper.text()).not.toContain('admin.riskControl.evidence.noInputSummary')
     wrapper.unmount()
   })
 

@@ -2,11 +2,22 @@ package service
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCyberRejectionEvidenceIndependentOfLogExcerpt(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	body := `{"error":{"code":"cyber_policy","message":"` + strings.Repeat("x", 8192) + `REJECTION_TAIL"}}`
+	MarkOpsCyberPolicy(c, CyberPolicyMark{Body: body, UpstreamStatus: 400})
+	mark := GetOpsCyberPolicy(c)
+	require.LessOrEqual(t, len(mark.Body), 4096)
+	require.Equal(t, body, mark.EvidenceBody)
+	require.Equal(t, len(body), mark.EvidenceBodyBytes)
+}
 
 func TestMarkAndGetOpsCyberPolicy(t *testing.T) {
 	gin.SetMode(gin.TestMode)

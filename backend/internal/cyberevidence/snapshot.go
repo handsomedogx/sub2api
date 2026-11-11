@@ -12,22 +12,37 @@ import (
 )
 
 const (
-	MaxParseBytes    = 1024 * 1024
+	MaxParseBytes    = 16 * 1024 * 1024
 	MaxStoredBytes   = 256 * 1024
-	RedactionVersion = "cyber-evidence-v1"
+	RedactionVersion = "cyber-evidence-v3"
 )
 
 type Payload struct {
-	Source             string `json:"source"`
-	UpstreamHTTPStatus int    `json:"upstream_http_status,omitempty"`
-	SessionID          string `json:"session_id,omitempty"`
-	Input              string `json:"input"`
-	Reason             string `json:"upstream_reason"`
-	Complete           bool   `json:"complete"`
-	Truncated          bool   `json:"truncated"`
-	Omission           string `json:"omission,omitempty"`
-	OriginalBytes      int    `json:"original_bytes"`
-	RedactionVersion   string `json:"redaction_version"`
+	Source               string   `json:"source"`
+	UpstreamHTTPStatus   int      `json:"upstream_http_status,omitempty"`
+	SessionID            string   `json:"session_id,omitempty"`
+	Input                string   `json:"input"`
+	Reason               string   `json:"upstream_reason"`
+	Complete             bool     `json:"complete"`
+	Truncated            bool     `json:"truncated"`
+	Omission             string   `json:"omission,omitempty"`
+	OriginalBytes        int      `json:"original_bytes"`
+	ScannedBytes         int      `json:"scanned_bytes"`
+	StoredBytes          int      `json:"stored_bytes"`
+	MessagesScanned      int      `json:"messages_scanned"`
+	MessagesRetained     int      `json:"messages_retained"`
+	MessagesOmitted      int      `json:"messages_omitted"`
+	ScanComplete         bool     `json:"scan_complete"`
+	OmittedFields        []string `json:"omitted_fields,omitempty"`
+	RedactionVersion     string   `json:"redaction_version"`
+	RequestBody          string   `json:"request_body,omitempty"`
+	BodyRetentionVersion int      `json:"body_retention_version,omitempty"`
+	RequestBodyBytes     int      `json:"request_body_bytes"`
+	RequestOmission      string   `json:"request_omission,omitempty"`
+	UpstreamResponse     string   `json:"upstream_response,omitempty"`
+	ResponseScope        string   `json:"response_scope,omitempty"`
+	ResponseBytes        int      `json:"response_bytes"`
+	ResponseOmission     string   `json:"response_omission,omitempty"`
 }
 
 var (
@@ -109,12 +124,17 @@ func (l *limiter) walk(value any, depth int) any {
 				l.truncated = true
 				break
 			}
+			l.remaining -= len(k) + 32
 			if secretField(k) {
 				out[boundedKey(k)] = "[REDACTED]"
 				continue
 			}
-			if k == "image_url" || k == "audio" || k == "data" || k == "file_data" || k == "encrypted_content" {
-				out[boundedKey(k)] = "[media/opaque data omitted]"
+			if mediaField(k) {
+				metadata := map[string]any{"omitted": "media_or_opaque"}
+				if text, ok := v[k].(string); ok {
+					metadata["encoded_bytes"] = len(text)
+				}
+				out[boundedKey(k)] = metadata
 				l.truncated = true
 				continue
 			}
@@ -177,6 +197,10 @@ func Snapshot(body []byte, reason string) Payload {
 // reference already extracted by the gateway. It is an identifier, never a
 // header dump, and is still passed through redaction.
 func SnapshotWithSession(body []byte, reason, sessionID string) Payload {
+	return snapshotWithLimit(body, reason, sessionID, MaxParseBytes)
+}
+
+func snapshotWithLimit(body []byte, reason, sessionID string, limit int) Payload {
 	p := Payload{
 		Source:           "upstream_error_code:cyber_policy",
 		Reason:           validPrefix(RedactText(reason), 4096),
@@ -184,38 +208,7 @@ func SnapshotWithSession(body []byte, reason, sessionID string) Payload {
 		OriginalBytes:    len(body),
 		RedactionVersion: RedactionVersion,
 	}
-	if len(body) > MaxParseBytes {
-		p.Truncated = true
-		p.Omission = "request_exceeds_parse_limit"
-		return p
-	}
-	var root map[string]any
-	if len(body) == 0 || json.Unmarshal(body, &root) != nil {
-		p.Omission = "input_unavailable_or_invalid"
-		return p
-	}
-	selected := map[string]any{}
-	for _, key := range []string{"messages", "input", "instructions", "system", "tools", "tool_choice", "previous_response_id", "conversation", "thread_id", "session_id"} {
-		if v, ok := root[key]; ok {
-			selected[key] = v
-		}
-	}
-	if _, messages := root["messages"]; !messages {
-		if _, input := root["input"]; !input {
-			p.Omission = "no_visible_input"
-			return p
-		}
-	}
-	l := limiter{remaining: 96 * 1024}
-	raw, err := json.Marshal(l.walk(selected, 0))
-	if err != nil || len(raw) > MaxStoredBytes {
-		p.Truncated = true
-		p.Omission = "structured_input_exceeds_limit"
-		return p
-	}
-	p.Input = string(raw)
-	p.Truncated = l.truncated
-	p.Complete = !p.Truncated
+	extractRecentInput(body, limit, &p)
 	return p
 }
 

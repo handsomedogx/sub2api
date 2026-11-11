@@ -750,7 +750,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 			MarkOpsCyberPolicy(c, CyberPolicyMark{
 				Code:           code,
 				Message:        msg,
-				Body:           truncateString(string(payload), 4096),
+				Body:           string(payload),
 				UpstreamStatus: http.StatusOK,
 				UpstreamInTok:  usage.InputTokens,
 				UpstreamOutTok: usage.OutputTokens,
@@ -1006,7 +1006,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				MarkOpsCyberPolicy(c, CyberPolicyMark{
 					Code:           code,
 					Message:        msg,
-					Body:           truncateString(string(payloadBytes), 4096),
+					Body:           string(payloadBytes),
 					UpstreamStatus: http.StatusOK,
 					UpstreamInTok:  usage.InputTokens,
 					UpstreamOutTok: usage.OutputTokens,
