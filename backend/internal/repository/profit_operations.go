@@ -113,7 +113,7 @@ const profitOperationsCohort = `accounts_config AS (
 // Join the complete projection before applying the selected cohort. Joining only
 // cohort would turn every configured account outside it into account_missing.
 const profitOperationsBase = `WITH ` + profitOperationsCohort + `, user_scoped AS (
- SELECT u.account_id,u.requested_model,u.model,u.upstream_model,u.total_cost,u.actual_cost,u.stream,u.first_token_ms,
+ SELECT u.account_id,u.group_id,u.requested_model,u.model,u.upstream_model,u.total_cost,u.actual_cost,u.stream,u.first_token_ms,
  u.account_stats_cost,u.input_tokens,u.output_tokens,u.cache_read_tokens,u.cache_creation_tokens,u.duration_ms,u.billing_type,u.created_at,u.queue_timing,u.queue_wait_ms,
  COALESCE(c.key,'unknown:account_missing') AS upstream_key,
  COALESCE(c.attribution,'account_missing') AS attribution,c.name AS account_name,c.updated_at AS config_updated_at,c.deleted,c.multiplier,c.channel_id AS explicit_channel_id,c.channel_name,c.channel_code,c.channel_remark,c.channel_revision,c.assignment,COALESCE(c.cost_basis,'account_missing') AS cost_basis,
@@ -126,7 +126,7 @@ const profitOperationsBase = `WITH ` + profitOperationsCohort + `, user_scoped A
  AND ($7='' OR CASE $8 WHEN 'public' THEN COALESCE(NULLIF(u.requested_model,''),u.model) WHEN 'recorded' THEN u.model WHEN 'upstream' THEN u.upstream_model END=$7)
  AND $12::text IN ('','all','user')
 ), internal_scoped AS (
- SELECT i.account_id,i.requested_model,i.model,i.model AS upstream_model,0::numeric AS total_cost,0::numeric AS actual_cost,false AS stream,NULL::bigint AS first_token_ms,
+ SELECT i.account_id,i.group_id,i.requested_model,i.model,i.model AS upstream_model,0::numeric AS total_cost,0::numeric AS actual_cost,false AS stream,NULL::bigint AS first_token_ms,
  NULL::numeric AS account_stats_cost,0::bigint AS input_tokens,0::bigint AS output_tokens,0::bigint AS cache_read_tokens,0::bigint AS cache_creation_tokens,
  NULL::bigint AS duration_ms,0::smallint AS billing_type,i.created_at,NULL::jsonb AS queue_timing,NULL::bigint AS queue_wait_ms,
  COALESCE(c.key,CASE WHEN i.account_id=0 THEN 'unknown:unattributed_internal' ELSE 'unknown:account_missing' END) AS upstream_key,
@@ -230,7 +230,10 @@ func (r *channelRepository) ReadProfitOperations(ctx context.Context, f service.
  'capacity',(SELECT jsonb_build_object('accounts',count(*),'schedulable',count(*) FILTER(WHERE schedulable AND status='active'),'configured_concurrency',COALESCE(sum(concurrency),0)) FROM cohort c WHERE NOT deleted AND ($6::bigint=0 OR EXISTS(SELECT 1 FROM account_groups ag WHERE ag.account_id=c.id AND ag.group_id=$6))),
  'catalog_total',(SELECT count(DISTINCT key) FROM cohort c WHERE NOT deleted AND ($6::bigint=0 OR EXISTS(SELECT 1 FROM account_groups ag WHERE ag.account_id=c.id AND ag.group_id=$6))),
  'account_details_limit',100,'historical_upstream_snapshot_requests',0,'historical_cost_multiplier_snapshot_requests',0,
- 'internal_records',COALESCE((SELECT jsonb_agg(to_jsonb(d)) FROM (SELECT id,source,kind,account_id,monitor_id,requested_model,model,tokens,standard_snapshot AS standard_cost,cost_multiplier_snapshot AS cost_multiplier,cost_usd,incomplete,status,created_at FROM internal_scoped ORDER BY created_at DESC,id DESC LIMIT $9 OFFSET $10)d),'[]'::jsonb),
+ 'internal_records',COALESCE((SELECT jsonb_agg(to_jsonb(d)) FROM (SELECT i.*,a.name AS account_name,m.name AS monitor_name,g.name AS group_name
+ FROM (SELECT id,source,kind,account_id,group_id,monitor_id,requested_model,model,tokens,standard_snapshot AS standard_cost,cost_multiplier_snapshot AS cost_multiplier,cost_usd,incomplete,status,created_at FROM internal_scoped ORDER BY created_at DESC,id DESC LIMIT $9 OFFSET $10)i
+ LEFT JOIN accounts a ON a.id=i.account_id LEFT JOIN channel_monitors m ON m.id=i.monitor_id LEFT JOIN groups g ON g.id=i.group_id
+ ORDER BY i.created_at DESC,i.id DESC)d),'[]'::jsonb),
  'internal_records_total',(SELECT count(*) FROM internal_scoped),
  'internal_history_note','Retained legacy history only; unrecorded/deleted history cannot be reconstructed. Snapshot costs are not revalued. Unattributed and partial costs remain unknown.',
  'cost_formula','customer usage total_cost * current extra.cost_multiplier + internal request cost snapshots; incomplete internal costs make totals unknown',

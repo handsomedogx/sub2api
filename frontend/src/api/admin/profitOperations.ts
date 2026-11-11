@@ -22,6 +22,7 @@ export interface OperationsRow extends ProfitMetrics { key: string; name: string
 export interface AccountBasis { id: number; name: string; key: string; attribution: string; updated_at: string; deleted: boolean; multiplier: number | null; cost_basis: string }
 export interface InternalCostRecord {
  id: string; source: 'pelican' | 'monitor'; kind: string; account_id: number; monitor_id: number
+ account_name?: string | null; monitor_name?: string | null; group_id?: number; group_name?: string | null
  requested_model: string; model: string; tokens: Record<string, number> | null; standard_cost: number | null
  cost_multiplier: number | null; cost_usd: number | null; incomplete: boolean; status: string; created_at: string
 }

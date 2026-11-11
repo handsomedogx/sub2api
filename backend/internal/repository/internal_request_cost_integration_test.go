@@ -25,9 +25,13 @@ func TestInternalCostsIncludedOnceFilteredAndFrozen(t *testing.T) {
 	_, err = integrationDB.Exec(`INSERT INTO usage_logs(user_id,api_key_id,account_id,request_id,group_id,model,total_cost,actual_cost,created_at) VALUES($1,$2,$3,$4,$5,'model',100,20,$6)`, f.user, f.key, f.account, uuid.NewString(), f.group, now.Add(-time.Hour))
 	require.NoError(t, err)
 	base, rate, cost := 10.0, 0.075, 0.75
+	var monitorID int64
+	require.NoError(t, integrationDB.QueryRow(`INSERT INTO channel_monitors(name,provider,endpoint,api_key_encrypted,primary_model,interval_seconds,created_by)
+ VALUES('Internal heartbeat','openai','https://internal.example','fixture','model',60,$1) RETURNING id`, f.user).Scan(&monitorID))
+	t.Cleanup(func() { _, _ = integrationDB.Exec(`DELETE FROM channel_monitors WHERE id=$1`, monitorID) })
 	rows := []service.InternalRequestCost{
 		{ID: uuid.NewString(), Source: "pelican", Kind: "group_test", AccountID: f.account, GroupID: f.group, RequestedModel: "model", Model: "model", StandardCost: &base, CostMultiplier: &rate, CostUSD: &cost, Status: "failed", CreatedAt: now.Add(-time.Minute)},
-		{ID: uuid.NewString(), Source: "monitor", Kind: "v3_idle", AccountID: f.account, GroupID: f.group, RequestedModel: "model", Model: "model", StandardCost: &base, CostMultiplier: &rate, CostUSD: &cost, Status: "success", CreatedAt: now.Add(-time.Minute)},
+		{ID: uuid.NewString(), Source: "monitor", Kind: "v1_group", MonitorID: monitorID, AccountID: f.account, GroupID: f.group, RequestedModel: "model", Model: "model", StandardCost: &base, CostMultiplier: &rate, CostUSD: &cost, Status: "success", CreatedAt: now.Add(-time.Minute)},
 	}
 	t.Cleanup(func() {
 		for _, r := range rows {
@@ -51,6 +55,26 @@ func TestInternalCostsIncludedOnceFilteredAndFrozen(t *testing.T) {
 	require.InDelta(t, 9.0, sum["estimated_cost"], 1e-9)
 	require.InDelta(t, 11.0, sum["estimated_profit"], 1e-9)
 	require.Len(t, data["internal_records"].([]any), 2)
+	for _, raw := range data["internal_records"].([]any) {
+		record := raw.(map[string]any)
+		require.Equal(t, "Operations account", record["account_name"])
+		require.Equal(t, float64(f.group), record["group_id"])
+		require.Equal(t, fmt.Sprintf("operations-%d", f.channel), record["group_name"])
+		if record["source"] == "monitor" {
+			require.Equal(t, "Internal heartbeat", record["monitor_name"])
+		}
+	}
+	_, err = integrationDB.Exec(`DELETE FROM channel_monitors WHERE id=$1`, monitorID)
+	require.NoError(t, err)
+	data = read()
+	require.Len(t, data["internal_records"].([]any), 2, "deleting a monitor must preserve expense records")
+	for _, raw := range data["internal_records"].([]any) {
+		record := raw.(map[string]any)
+		if record["source"] == "monitor" {
+			require.Nil(t, record["monitor_name"])
+			require.Equal(t, float64(monitorID), record["monitor_id"])
+		}
+	}
 	q.Source = "user"
 	sum = read()["summary"].(map[string]any)
 	require.Equal(t, 0.0, sum["internal_requests"])
