@@ -17,7 +17,8 @@
                 v-model="searchQuery"
                 type="text"
                 :placeholder="t('admin.groups.searchGroups')"
-                class="input pl-10"
+                class="input scroll-mt-20 pl-10"
+                @focus="handleSearchFocus"
                 @input="handleSearch"
               />
             </div>
@@ -551,6 +552,7 @@
             @change="createForm.copy_accounts_from_group_ids = []"
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
+          <QwenPlatformNotice :user-id="authStore.user?.id" />
         </div>
         <!-- 从分组复制账号 -->
         <div v-if="!authStore.isSimpleMode && copyAccountsGroupOptions.length > 0">
@@ -1610,7 +1612,7 @@
             <span><span class="block text-sm text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.longContext") }}</span><span class="block text-xs text-gray-500">{{ t("admin.groups.modelPricing.longContextHint") }}</span></span>
           </label>
           <div class="mt-3 space-y-2">
-            <PricingEntryCard v-for="(entry, index) in createForm.model_pricing" :key="index" :entry="entry" :platform="createForm.platform" hide-token-intervals @update="createForm.model_pricing[index] = $event" @remove="createForm.model_pricing.splice(index, 1)" />
+            <PricingEntryCard :notice-user-id="authStore.user?.id" v-for="(entry, index) in createForm.model_pricing" :key="index" :entry="entry" :platform="createForm.platform" hide-token-intervals @update="createForm.model_pricing[index] = $event" @remove="createForm.model_pricing.splice(index, 1)" />
           </div>
         </div>
 
@@ -2276,6 +2278,7 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+          <QwenPlatformNotice v-if="editForm.platform === 'qwen'" :user-id="authStore.user?.id" />
         </div>
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <label class="input-label">{{ t("admin.groups.systemPrompt.title") }}</label>
@@ -3343,7 +3346,7 @@
             <span><span class="block text-sm text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.longContext") }}</span><span class="block text-xs text-gray-500">{{ t("admin.groups.modelPricing.longContextHint") }}</span></span>
           </label>
           <div class="mt-3 space-y-2">
-            <PricingEntryCard v-for="(entry, index) in editForm.model_pricing" :key="index" :entry="entry" :platform="editForm.platform" hide-token-intervals @update="editForm.model_pricing[index] = $event" @remove="editForm.model_pricing.splice(index, 1)" />
+            <PricingEntryCard :notice-user-id="authStore.user?.id" v-for="(entry, index) in editForm.model_pricing" :key="index" :entry="entry" :platform="editForm.platform" hide-token-intervals @update="editForm.model_pricing[index] = $event" @remove="editForm.model_pricing.splice(index, 1)" />
           </div>
         </div>
 
@@ -4475,6 +4478,7 @@
 </template>
 
 <script setup lang="ts">
+import QwenPlatformNotice from '@/components/common/QwenPlatformNotice.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
@@ -4607,6 +4611,7 @@ const emptyGroupPricing = (): PricingFormEntry => ({
   output_price: null,
   cache_write_price: null,
   cache_write_1h_price: null,
+  cache_write_12h_price: null,
   cache_read_price: null,
   reasoning_effort_multipliers: null,
   image_input_price: null,
@@ -4629,6 +4634,7 @@ const groupPricingFromAPI = (
     output_price: perTokenToMTok(entry.output_price),
     cache_write_price: perTokenToMTok(entry.cache_write_price),
     cache_write_1h_price: perTokenToMTok(entry.cache_write_1h_price),
+    cache_write_12h_price: perTokenToMTok(entry.cache_write_12h_price),
     cache_read_price: perTokenToMTok(entry.cache_read_price),
     reasoning_effort_multipliers: entry.reasoning_effort_multipliers
       ? { ...entry.reasoning_effort_multipliers }
@@ -4654,6 +4660,7 @@ const groupPricingToAPI = (
       output_price: mTokToPerToken(entry.output_price),
       cache_write_price: mTokToPerToken(entry.cache_write_price),
       cache_write_1h_price: mTokToPerToken(entry.cache_write_1h_price),
+      cache_write_12h_price: mTokToPerToken(entry.cache_write_12h_price),
       cache_read_price: mTokToPerToken(entry.cache_read_price),
       reasoning_effort_multipliers: formReasoningEffortMultipliersToAPI(
         entry.reasoning_effort_multipliers,
@@ -6007,6 +6014,15 @@ const loadCapacitySummary = async () => {
     capacityMap.value = map;
   } catch (error) {
     console.error("Error loading group capacity summary:", error);
+  }
+};
+
+const handleSearchFocus = (event: FocusEvent) => {
+  const input = event.target as HTMLInputElement;
+  const topInset = parseFloat(getComputedStyle(input).scrollMarginTop) || 0;
+  // Nearest scrolling can leave an input inside the viewport but behind AppHeader.
+  if (input.getBoundingClientRect().top < topInset) {
+    input.scrollIntoView({ block: "start", behavior: "auto" });
   }
 };
 

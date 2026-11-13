@@ -774,6 +774,7 @@ export default {
       cacheWritePrice: 'Cache Write',
       cacheWrite5mPrice: 'Cache Write (5m)',
       cacheWrite1hPrice: 'Cache Write (1h)',
+      cacheWrite12hPrice: 'Cache Write (12h)',
       cacheReadPrice: 'Cache Read',
       imageInputPrice: 'Image Input',
       imageOutputPrice: 'Image Output',
@@ -838,7 +839,9 @@ export default {
       unitPerMillion: '$ / 1M tokens',
       perUnitRequest: '/ request',
       perUnitImage: '/ image',
+      perUnitSecond: '/ second',
       perRequest: 'Per request',
+      perSecond: 'Per second',
       perImage: 'Per image'
     },
     nav: {

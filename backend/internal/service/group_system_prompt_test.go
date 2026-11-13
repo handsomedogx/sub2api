@@ -113,6 +113,7 @@ func TestApplyGroupSystemPromptPolicy_PassthroughKeepsBytes(t *testing.T) {
 func TestGroupSystemPromptAuthCacheRoundtrip(t *testing.T) {
 	key := &APIKey{
 		ID: 1, Key: "sk-prompt-cache", User: &User{ID: 2, Status: StatusActive},
+		AllowLongContext: true, ContextTokenLimit: 1234,
 		Group: &Group{ID: 3, Hydrated: true, SystemPromptMode: "replace", SystemPrompt: "网关指令\nKeep whitespace.  ", ImageCountBilling: true},
 	}
 	svc := &APIKeyService{}
@@ -126,9 +127,11 @@ func TestGroupSystemPromptAuthCacheRoundtrip(t *testing.T) {
 	require.Equal(t, key.Group.SystemPromptMode, materialized.Group.SystemPromptMode)
 	require.Equal(t, key.Group.SystemPrompt, materialized.Group.SystemPrompt)
 	require.True(t, materialized.Group.ImageCountBilling)
+	require.True(t, materialized.AllowLongContext)
+	require.Equal(t, key.ContextTokenLimit, materialized.ContextTokenLimit)
 
-	for _, version := range []int{30, 31} {
-		cached.Snapshot.Version = version // Neither prior cache format included both policies.
+	for _, version := range []int{30, 31, 32, 33} {
+		cached.Snapshot.Version = version // Prior formats do not preserve every current policy.
 		_, used, err = svc.applyAuthCacheEntry(key.Key, &cached)
 		require.NoError(t, err)
 		require.False(t, used)

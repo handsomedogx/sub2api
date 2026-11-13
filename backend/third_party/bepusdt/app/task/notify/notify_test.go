@@ -26,6 +26,11 @@ func newNotifyTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("get sql db: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Errorf("close test db: %v", err)
+		}
+	})
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetMaxIdleConns(1)
 
