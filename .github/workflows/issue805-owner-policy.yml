@@ -6,6 +6,7 @@ on:
     paths:
       - 'backend/**'
       - '.github/scripts/prepare-moderation-red-fixtures.sh'
+      - '.github/scripts/prepare-replay-red-fixtures.sh'
       - '.github/workflows/issue805-owner-policy.yml'
   workflow_dispatch:
 
@@ -57,6 +58,9 @@ jobs:
             if git cat-file -e "$baseline:$target" 2>/dev/null; then
               mkdir -p "$(dirname "$target")"
               git show "$baseline:$target" > "$target"
+              # A file removed by the candidate is untracked after restoration.
+              # Include it in the baseline diff without staging different content.
+              git add -N -- "$target"
               expected=$(git rev-parse "$baseline:$target")
               actual=$(git hash-object "$target")
               echo "$target baseline=present expected=$expected actual=$actual" >> "$RUNNER_TEMP/issue805-evidence/red-blobs.txt"
@@ -87,7 +91,7 @@ jobs:
           # baseline. The readable/task-rebuild fixtures import its settings and
           # usage helpers. Exclude this exact dependency set only in the old
           # Issue805 RED; GREEN and each feature's own TDD job retain them.
-          for omission_test in backend/internal/handler/openai_409_omit_history_test.go backend/internal/handler/openai_409_readable_continuation_test.go backend/internal/handler/openai_409_http_rebuild_test.go backend/internal/handler/openai_409_shadow_http_test.go backend/internal/handler/openai_409_shadow_race_test.go backend/internal/handler/openai_409_ws_rebuild_test.go backend/internal/handler/openai_409_ws_oracle_test.go backend/internal/handler/openai_400_omit_history_test.go; do
+          for omission_test in backend/internal/handler/openai_409_omit_history_test.go backend/internal/handler/openai_409_readable_continuation_test.go backend/internal/handler/openai_409_http_rebuild_test.go backend/internal/handler/openai_409_shadow_http_test.go backend/internal/handler/openai_409_shadow_race_test.go backend/internal/handler/openai_409_ws_rebuild_test.go backend/internal/handler/openai_409_ws_oracle_test.go backend/internal/handler/openai_400_omit_history_test.go backend/internal/handler/openai_issue854_continuation_test.go backend/internal/handler/openai_issue854_upstream_test.go backend/internal/handler/openai_issue854_postgres_test.go; do
             git cat-file -e "$EXPECTED_HEAD_SHA:$omission_test"
             rm -- "$omission_test"
             test ! -e "$omission_test"
@@ -95,7 +99,26 @@ jobs:
           done
           # The pinned HTTP2 exclusion helper above already handles the handler
           # fixture absent from this baseline; do not remove it a second time.
+          bash "$GITHUB_WORKSPACE/.github/scripts/prepare-replay-red-fixtures.sh" "$baseline" . "$EXPECTED_HEAD_SHA" | tee "$RUNNER_TEMP/issue805-evidence/replay-fixtures.txt"
           bash "$GITHUB_WORKSPACE/.github/scripts/prepare-moderation-red-fixtures.sh" "$baseline" . "$EXPECTED_HEAD_SHA" | tee "$RUNNER_TEMP/issue805-evidence/moderation-fixtures.txt"
+          # The unrelated usage-sort fixture requires fields absent in this
+          # full historical APIKeyListFilters. Keep it in every candidate GREEN;
+          # omit only its exact post-baseline blob from this disposable RED.
+          target=backend/internal/handler/api_key_handler_usage_sort_test.go
+          contract=backend/internal/service/api_key.go
+          if git cat-file -e "$EXPECTED_HEAD_SHA:$target" 2>/dev/null; then
+            if git cat-file -e "$baseline:$target" 2>/dev/null || git grep -q 'UsageStartTime' "$baseline" -- "$contract"; then
+              echo 'historical usage fixture exclusion requires a baseline without the fixture and its API' >&2
+              exit 1
+            fi
+            expected_contract=$(git rev-parse "$baseline:$contract")
+            test "$(git hash-object "$contract")" = "$expected_contract"
+            expected=$(git rev-parse "$EXPECTED_HEAD_SHA:$target")
+            test "$(git hash-object "$target")" = "$expected"
+            rm -- "$target"
+            test ! -e "$target"
+            echo "$target test=candidate-only blob=$expected contract=$expected_contract actual=absent" >> "$RUNNER_TEMP/issue805-evidence/red-blobs.txt"
+          fi
           # The selected regression and its shared harness must remain exact
           # candidate blobs. The clean GREEN checkout retains all new tests.
           for target in backend/internal/handler/openai_issue805_delivery_test.go backend/internal/handler/openai_issue805_owner_policy_test.go backend/internal/handler/openai_issue805_ws_test.go backend/internal/handler/openai_issue715_recovery_test.go backend/internal/handler/openai_responses_failover_cancel_test.go; do

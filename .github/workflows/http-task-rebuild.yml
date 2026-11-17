@@ -24,6 +24,7 @@ on:
       - '.github/scripts/mutate-http-rebuild-owner-scan.py'
       - '.github/scripts/assert-readable-continuation.py'
       - '.github/scripts/prepare-moderation-red-fixtures.sh'
+      - '.github/scripts/prepare-replay-red-fixtures.sh'
       - '.github/workflows/http-task-rebuild.yml'
 
 permissions:
@@ -95,7 +96,9 @@ jobs:
             while IFS= read -r target; do
               case "$target" in *_test.go) continue ;; esac
               if git cat-file -e "$BASELINE_SHA:$target" 2>/dev/null; then
+                mkdir -p -- "$(dirname -- "$target")"
                 git show "$BASELINE_SHA:$target" > "$target"
+                git add -N -- "$target"
                 expected=$(git rev-parse "$BASELINE_SHA:$target")
                 test "$(git hash-object "$target")" = "$expected"
                 echo "$target baseline=$expected" >> "$RUNNER_TEMP/http-task-evidence/red-blobs.txt"
@@ -117,6 +120,7 @@ jobs:
           if [ "$PHASE" = RED ]; then
             bash "$GITHUB_WORKSPACE/.github/scripts/exclude-later-400-red-fixtures.sh" "$BASELINE_SHA"
             bash "$GITHUB_WORKSPACE/.github/scripts/exclude-later-http2-red-fixtures.sh" "$BASELINE_SHA"
+            bash "$GITHUB_WORKSPACE/.github/scripts/prepare-replay-red-fixtures.sh" "$BASELINE_SHA" . "$CANDIDATE_SHA" | tee "$RUNNER_TEMP/http-task-evidence/replay-fixtures.txt"
             bash "$GITHUB_WORKSPACE/.github/scripts/prepare-moderation-red-fixtures.sh" "$BASELINE_SHA" . "$CANDIDATE_SHA" | tee "$RUNNER_TEMP/http-task-evidence/moderation-fixtures.txt"
           fi
           for target in backend/internal/handler/openai_409_http_rebuild_test.go backend/internal/handler/openai_409_readable_continuation_test.go backend/internal/handler/openai_responses_failover_cancel_test.go; do
@@ -209,7 +213,9 @@ jobs:
           while IFS= read -r target; do
             case "$target" in *_test.go) continue ;; esac
             if git cat-file -e "$REVIEW_BASELINE:$target" 2>/dev/null; then
+              mkdir -p -- "$(dirname -- "$target")"
               git show "$REVIEW_BASELINE:$target" > "$target"
+              git add -N -- "$target"
             else
               rm -- "$target"
             fi
@@ -218,6 +224,7 @@ jobs:
           git diff --exit-code "$CANDIDATE_SHA" -- 'backend/**/*_test.go'
           bash "$GITHUB_WORKSPACE/.github/scripts/exclude-later-400-red-fixtures.sh" "$REVIEW_BASELINE"
           bash "$GITHUB_WORKSPACE/.github/scripts/exclude-later-http2-red-fixtures.sh" "$REVIEW_BASELINE"
+          bash "$GITHUB_WORKSPACE/.github/scripts/prepare-replay-red-fixtures.sh" "$REVIEW_BASELINE" . "$CANDIDATE_SHA" | tee "$RUNNER_TEMP/http-review-red-evidence/replay-fixtures.txt"
           bash "$GITHUB_WORKSPACE/.github/scripts/prepare-moderation-red-fixtures.sh" "$REVIEW_BASELINE" . "$CANDIDATE_SHA" | tee "$RUNNER_TEMP/http-review-red-evidence/moderation-fixtures.txt"
           for suite in pointer-waiver normalization; do
             test_name=TestOpenAI409HTTPUnownedPointerMustDetach

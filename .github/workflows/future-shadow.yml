@@ -20,6 +20,7 @@ on:
       - '.github/scripts/test_assert_future_shadow.py'
       - '.github/scripts/mutate-future-shadow.py'
       - '.github/scripts/prepare-moderation-red-fixtures.sh'
+      - '.github/scripts/prepare-replay-red-fixtures.sh'
       - '.github/workflows/future-shadow.yml'
 permissions:
   contents: read
@@ -89,7 +90,9 @@ jobs:
             while IFS= read -r target; do
               case "$target" in *_test.go) continue ;; esac
               if git cat-file -e "$BASELINE_SHA:$target" 2>/dev/null; then
+                mkdir -p -- "$(dirname -- "$target")"
                 git show "$BASELINE_SHA:$target" > "$target"
+                git add -N -- "$target"
                 test "$(git hash-object "$target")" = "$(git rev-parse "$BASELINE_SHA:$target")"
               else
                 rm -- "$target"
@@ -101,6 +104,7 @@ jobs:
           if [ "$PHASE" = RED ]; then
             bash "$GITHUB_WORKSPACE/.github/scripts/exclude-later-400-red-fixtures.sh" "$BASELINE_SHA"
             bash "$GITHUB_WORKSPACE/.github/scripts/exclude-later-http2-red-fixtures.sh" "$BASELINE_SHA"
+            bash "$GITHUB_WORKSPACE/.github/scripts/prepare-replay-red-fixtures.sh" "$BASELINE_SHA" . "$CANDIDATE_SHA" | tee "$RUNNER_TEMP/shadow-evidence/replay-fixtures.txt"
             bash "$GITHUB_WORKSPACE/.github/scripts/prepare-moderation-red-fixtures.sh" "$BASELINE_SHA" . "$CANDIDATE_SHA" | tee "$RUNNER_TEMP/shadow-evidence/moderation-fixtures.txt"
           fi
           for target in backend/internal/handler/openai_409_shadow_http_test.go backend/internal/service/openai_agent_message_delivery.go backend/internal/service/openai_409_omit_history.go; do

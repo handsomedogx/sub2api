@@ -2053,7 +2053,11 @@
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
         </div>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <OpenAIProxySettings v-if="openaiProxySupported"
+          v-model:mode="openaiProxyMode" v-model:single-proxy-id="form.proxy_id" v-model:proxy-ids="openaiProxyIds"
+          :proxies="proxies" :loading="proxiesLoading" :load-error="proxiesLoadError" :current-account-id="account.id"
+          :user-id="authStore.user?.id" @retry="emit('retry-proxies')" />
+        <ProxySelector v-else v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
       <UpstreamRequestIdHeaderField
@@ -2227,6 +2231,7 @@
           </div>
         </div>
         <p v-if="excelBPSEnabled" class="mt-2 text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.excelBPSNotice') }}</p>
+        <ExcelBPSSearchOptions v-if="excelBPSEnabled" v-model:enabled="excelBPSWebSearch" v-model:automatic="excelBPSWebSearchAuto" class="mt-3" />
         <div v-if="excelBPSEnabled" class="mt-3">
           <label class="flex items-center gap-2">
             <input v-model="excelBPSOmitUnsupportedTools" type="checkbox"
@@ -2286,7 +2291,7 @@
               data-testid="excel-bps-403-target-group" />
           </div>
         </div>
-        <div v-if="excelBPSEnabled" class="mt-3">
+        <div v-if="excelBPSEnabled && openaiProxyMode === 'single'" class="mt-3">
           <label class="flex items-center gap-2">
             <input v-model="excelBPSMihomo" type="checkbox" data-testid="excel-bps-mihomo"
               class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500" />
@@ -3789,12 +3794,14 @@ import { DEFAULT_ACCOUNT_COST_MULTIPLIER, isValidAccountCostMultiplier, readAcco
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ExcelBPSModeSwitches from './ExcelBPSModeSwitches.vue'
+import ExcelBPSSearchOptions from './ExcelBPSSearchOptions.vue'
 import type { ExcelBPSMode } from '@/utils/excelBPSDefaults'
 import { useExcelBPSDefaults } from '@/composables/useExcelBPSDefaults'
 import { DEFAULT_BPS_RECOVERY_INTERVAL_MINUTES, MAX_BPS_RECOVERY_INTERVAL_MINUTES, isValidBPSRecoveryInterval, bpsRecoveryIntervalOrDefault } from '@/utils/excelBPSRecovery'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
+import OpenAIProxySettings from '@/components/account/OpenAIProxySettings.vue'
 import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
 
 import { adminAPI } from '@/api/admin'
@@ -3923,12 +3930,15 @@ interface Props {
   show: boolean
   account: Account | null
   proxies: Proxy[]
+  proxiesLoading?: boolean
+  proxiesLoadError?: boolean
   groups: AdminGroup[]
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
   close: []
+  'retry-proxies': []
   updated: [account: Account]
 }>()
 
@@ -3967,13 +3977,14 @@ const isSparkShadow = computed(() => props.account?.parent_account_id != null)
 
 // 「降智后自动开启 BPS」与后端 QualityBPSEligible 一致：只有普通 ChatGPT OAuth 母账号（不含 PAT、Agent Identity）。
 const autoBPS = useAccountAutoBPS()
-const autoBPSSupported = computed(() => {
+const openaiProxySupported = computed(() => {
   const account = props.account
   if (account?.platform !== 'openai' || account.type !== 'oauth' || isSparkShadow.value) return false
   const credentials = (account.credentials ?? {}) as Record<string, unknown>
   const modes = [credentials.auth_mode, credentials.openai_auth_mode].map(mode => String(mode ?? '').trim().toLowerCase())
   return !modes.some(mode => mode === 'agentidentity' || mode === 'personalaccesstoken' || mode === 'personal_access_token')
 })
+const autoBPSSupported = openaiProxySupported
 watch(() => [props.show, props.account?.id, autoBPSSupported.value] as const, ([show, id, supported]) => {
   if (show && id && supported) void autoBPS.load(id)
   else autoBPS.reset()
@@ -4634,6 +4645,8 @@ const excelBPSAllModels = ref(false)
 const excelBPSModels = ref<string[]>([...DEFAULT_EXCEL_BPS_MODELS])
 const excelBPSMihomo = ref(false)
 const excelBPSProxySource = ref<'mihomo' | 'ip_pool'>('mihomo')
+const openaiProxyMode = ref<'single' | 'request'>('single')
+const openaiProxyIds = ref<number[]>([])
 const excelBPSCacheCreationAsInput = ref(false)
 const excelBPSAutoDisableOn403 = ref(false)
 const excelBPSAutoRecoverOn403 = ref(false)
@@ -4641,6 +4654,8 @@ const excelBPSRecoveryIntervalMinutes = ref<number | string>(DEFAULT_BPS_RECOVER
 const excelBPS403RecoveryPending = computed(() => props.account?.extra?.openai_excel_bps !== true && typeof props.account?.extra?.openai_excel_bps_403_disabled_at === 'string')
 const excelBPSOmitUnsupportedTools = ref(false)
 const excelBPSIgnoreEncryptedContent = ref(false)
+const excelBPSWebSearch = ref(false)
+const excelBPSWebSearchAuto = ref(false)
 const excelBPSAutoMoveOn403 = ref(false)
 const excelBPS403TargetGroupID = ref<number | string>('')
 const bpsDefaults = useExcelBPSDefaults({
@@ -4652,6 +4667,7 @@ const bpsDefaults = useExcelBPSDefaults({
     all_models: excelBPSAllModels, models: excelBPSModels,
     omit_unsupported_tools: excelBPSOmitUnsupportedTools,
     ignore_encrypted_content: excelBPSIgnoreEncryptedContent,
+    web_search: excelBPSWebSearch, web_search_auto: excelBPSWebSearchAuto,
     auto_disable_on_403: excelBPSAutoDisableOn403, auto_recover_on_403: excelBPSAutoRecoverOn403,
     recovery_interval_minutes: excelBPSRecoveryIntervalMinutes,
     auto_move_on_403: excelBPSAutoMoveOn403, target_group_id: excelBPS403TargetGroupID,
@@ -5231,12 +5247,16 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   excelBPSModels.value = [...DEFAULT_EXCEL_BPS_MODELS]
   excelBPSMihomo.value = false
   excelBPSProxySource.value = 'mihomo'
+  openaiProxyMode.value = 'single'
+  openaiProxyIds.value = []
   excelBPSCacheCreationAsInput.value = false
   excelBPSAutoDisableOn403.value = false
   excelBPSAutoRecoverOn403.value = false
   excelBPSRecoveryIntervalMinutes.value = DEFAULT_BPS_RECOVERY_INTERVAL_MINUTES
   excelBPSOmitUnsupportedTools.value = false
   excelBPSIgnoreEncryptedContent.value = false
+  excelBPSWebSearch.value = false
+  excelBPSWebSearchAuto.value = false
   excelBPSAutoMoveOn403.value = false
   excelBPS403TargetGroupID.value = ''
   prismBrowserEnabled.value = false
@@ -5285,12 +5305,20 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     }
     excelBPSMihomo.value = newAccount.type === 'oauth' && extra?.openai_excel_bps_mihomo === true
     excelBPSProxySource.value = extra?.openai_excel_bps_proxy_source === 'ip_pool' ? 'ip_pool' : 'mihomo'
+    const hasUnifiedProxyMode = Object.prototype.hasOwnProperty.call(extra ?? {}, 'openai_proxy_mode')
+    openaiProxyMode.value = (hasUnifiedProxyMode ? extra?.openai_proxy_mode : extra?.openai_excel_bps_proxy_mode) === 'request' ? 'request' : 'single'
+    const configuredProxyIds = hasUnifiedProxyMode ? extra?.openai_proxy_ids : extra?.openai_excel_bps_proxy_ids
+    openaiProxyIds.value = Array.isArray(configuredProxyIds)
+      ? [...new Set(configuredProxyIds.filter((id): id is number => typeof id === 'number' && Number.isSafeInteger(id) && id > 0))]
+      : []
     excelBPSCacheCreationAsInput.value = excelBPSEnabled.value && extra?.openai_excel_bps_cache_creation_as_input === true
     excelBPSAutoDisableOn403.value = newAccount.type === 'oauth' && extra?.openai_excel_bps_auto_disable_on_403 === true
     excelBPSAutoRecoverOn403.value = newAccount.type === 'oauth' && extra?.openai_excel_bps_auto_recover_on_403 === true
     excelBPSRecoveryIntervalMinutes.value = bpsRecoveryIntervalOrDefault(extra?.openai_excel_bps_403_recovery_interval_minutes)
     excelBPSOmitUnsupportedTools.value = excelBPSEnabled.value && extra?.openai_excel_bps_omit_unsupported_tools === true
     excelBPSIgnoreEncryptedContent.value = excelBPSEnabled.value && extra?.openai_excel_bps_ignore_encrypted_content === true
+    excelBPSWebSearch.value = excelBPSEnabled.value && extra?.openai_excel_bps_web_search === true
+    excelBPSWebSearchAuto.value = excelBPSWebSearch.value && extra?.openai_excel_bps_web_search_auto === true
     excelBPSAutoMoveOn403.value = newAccount.type === 'oauth' && extra?.openai_excel_bps_auto_move_on_403 === true
     const targetGroupID = extra?.openai_excel_bps_403_target_group_id
     excelBPS403TargetGroupID.value = typeof targetGroupID === 'number' && Number.isSafeInteger(targetGroupID) && targetGroupID >= 0 ? targetGroupID : ''
@@ -6373,6 +6401,11 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
 const handleSubmit = async () => {
   if (bpsDefaults.loading.value) return
   if (!props.account) return
+  if (openaiProxySupported.value &&
+    openaiProxyMode.value === 'request' && openaiProxyIds.value.length === 0) {
+    appStore.showError(t('admin.accounts.openai.proxyRequired'))
+    return
+  }
   const accountID = props.account.id
   if (props.account.platform === 'openai' && props.account.type === 'oauth' && !isSparkShadow.value && (excelBPSEnabled.value || excelBPS403RecoveryPending.value) && excelBPSAutoDisableOn403.value && excelBPSAutoRecoverOn403.value && !isValidBPSRecoveryInterval(excelBPSRecoveryIntervalMinutes.value)) {
     appStore.showError(t('admin.accounts.openai.excelBPS403RecoveryIntervalInvalid'))
@@ -7020,6 +7053,13 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.openai_excel_bps_mihomo
       }
+      if (openaiProxySupported.value) {
+        newExtra.openai_proxy_mode = openaiProxyMode.value
+        newExtra.openai_proxy_ids = [...openaiProxyIds.value]
+      } else {
+        delete newExtra.openai_proxy_mode
+        delete newExtra.openai_proxy_ids
+      }
       if (newExtra.openai_excel_bps === true && excelBPSCacheCreationAsInput.value) {
         newExtra.openai_excel_bps_cache_creation_as_input = true
       } else {
@@ -7029,6 +7069,13 @@ const handleSubmit = async () => {
         newExtra.openai_excel_bps_omit_unsupported_tools = true
       } else {
         delete newExtra.openai_excel_bps_omit_unsupported_tools
+      }
+      if (newExtra.openai_excel_bps === true && excelBPSWebSearch.value) {
+        newExtra.openai_excel_bps_web_search = true
+        newExtra.openai_excel_bps_web_search_auto = excelBPSWebSearchAuto.value
+      } else {
+        delete newExtra.openai_excel_bps_web_search
+        delete newExtra.openai_excel_bps_web_search_auto
       }
       if (newExtra.openai_excel_bps === true && excelBPSIgnoreEncryptedContent.value) {
         newExtra.openai_excel_bps_ignore_encrypted_content = true
@@ -7041,7 +7088,7 @@ const handleSubmit = async () => {
       if (preserveDisabledBPS) {
         for (const key of ['openai_excel_bps_config_mode', 'openai_excel_bps_models', 'openai_excel_bps_mihomo', 'openai_excel_bps_proxy_source',
           'openai_excel_bps_cache_creation_as_input', 'openai_excel_bps_omit_unsupported_tools',
-          'openai_excel_bps_ignore_encrypted_content']) {
+          'openai_excel_bps_ignore_encrypted_content', 'openai_excel_bps_web_search', 'openai_excel_bps_web_search_auto']) {
           if (Object.prototype.hasOwnProperty.call(currentExtra, key)) newExtra[key] = currentExtra[key]
           else delete newExtra[key]
         }
